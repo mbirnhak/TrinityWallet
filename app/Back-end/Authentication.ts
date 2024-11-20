@@ -2,7 +2,7 @@
  * This file deals with authenticating a user, using OpenIDC, in order
  * to unlock the wallet
  */
-import AzureAuth from 'react-native-azure-auth';
+import { authorize } from 'react-native-app-auth';
 import * as LocalAuthentication from 'expo-local-authentication';
 
 /**
@@ -11,20 +11,22 @@ import * as LocalAuthentication from 'expo-local-authentication';
  * user
  */
 
-const azureAuth = new AzureAuth({
+const config = {
+    issuer: "https://login.microsoftonline.com/4ba15b4b-7d11-4be1-a2fb-df28939a3e0c/v2.0",
     clientId: 'a4bde670-76fa-4bcf-8592-3c378e086e23',
-    redirectUri: 'trinwallet://auth',
-});
+    redirectUrl: 'trinwallet://auth/',
+    scopes: ['openid'],
+};
 
 export async function openIDC(): Promise<boolean> {
     try {
         // optional paramters to authorize func
-        const authResult = await azureAuth.webAuth.authorize({})
-        if(authResult?.accessToken) {
-            console.log('OIDC Authentication Succeeded', authResult);
+        const authResult = await authorize(config)
+        if (authResult?.idToken) {
+            console.log('Authentication Succeeded', authResult);
             return true;
         } else {
-            console.log('OIDC Authentication Failed', authResult);
+            console.log('Authentication Failed', authResult);
             return false;
         }
     } catch (error) {
@@ -40,15 +42,15 @@ export async function openIDC(): Promise<boolean> {
 /**
  * Uses biometrics to generate a passkey
  */
-export async function biometrics(): Promise<boolean> {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync()
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync() // faceID/fingerprint is set up
-    if(hasHardware && isEnrolled) {
-        const biometricResult = await LocalAuthentication.authenticateAsync({
-            promptMessage: "Authenticate with biometrics"
-        });
-        return biometricResult.success
-    }
-    console.log('Biometrics authentication is not supported or not enrolled');
-    return false;
-}
+// export async function biometrics(): Promise<boolean> {
+//     const hasHardware = await LocalAuthentication.hasHardwareAsync()
+//     const isEnrolled = await LocalAuthentication.isEnrolledAsync() // faceID/fingerprint is set up
+//     if(hasHardware && isEnrolled) {
+//         const biometricResult = await LocalAuthentication.authenticateAsync({
+//             promptMessage: "Authenticate with biometrics"
+//         });
+//         return biometricResult.success
+//     }
+//     console.log('Biometrics authentication is not supported or not enrolled');
+//     return false;
+// }
