@@ -12,8 +12,8 @@ import * as LocalAuthentication from 'expo-local-authentication';
  */
 
 const azureAuth = new AzureAuth({
-    clientId: '',
-    redirectUri: '',
+    clientId: 'a4bde670-76fa-4bcf-8592-3c378e086e23',
+    redirectUri: 'trinwallet://auth',
 });
 
 export async function openIDC(): Promise<boolean> {
