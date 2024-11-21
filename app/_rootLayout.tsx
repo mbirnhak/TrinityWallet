@@ -1,10 +1,44 @@
+// app/_rootLayout.tsx
+
 import { Stack } from "expo-router";
+import { useEffect, useState } from "react";
+import AuthenticationService from "./Back-end/Authentication";
 
 export default function RootLayout() {
-  return (
-    <Stack>
-      <Stack.Screen name="index" options={{ title: "Home Page" }} />
-      <Stack.Screen name="Front-end/login" options={{ title: "Login Page" }} />
-    </Stack>
-  );
+    const [isInitialized, setIsInitialized] = useState(false);
+
+    useEffect(() => {
+        checkAuth();
+    }, []);
+
+    const checkAuth = async () => {
+        const auth = AuthenticationService.getInstance();
+        await auth.checkAuthStatus();
+        setIsInitialized(true);
+    };
+
+    if (!isInitialized) {
+        return null; // Or a loading screen
+    }
+
+    return (
+        <Stack>
+            <Stack.Screen 
+                name="index" 
+                options={{ 
+                    title: "Trinity Wallet",
+                    headerShown: false 
+                }} 
+            />
+            <Stack.Screen 
+                name="frontend/login" 
+                options={{ 
+                    title: "Login",
+                    headerShown: false,
+                    // Prevent going back to login once authenticated
+                    gestureEnabled: false,
+                }} 
+            />
+        </Stack>
+    );
 }

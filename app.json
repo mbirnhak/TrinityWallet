@@ -16,12 +16,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "edu.trincoll.trinitywallet",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": ["trinwallet"]
           }
-        ]
+        ],
+        "NSFaceIDUsageDescription": "This app uses Face ID to secure your digital wallet"
       }
     },
     "android": {
@@ -50,7 +54,13 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "This app uses Face ID to secure your digital wallet"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
