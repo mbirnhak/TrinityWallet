@@ -1,5 +1,6 @@
 {
   "expo": {
+    "newArchEnabled": true,
     "name": "TrinityWallet",
     "slug": "TrinityWallet",
     "version": "1.0.0",
