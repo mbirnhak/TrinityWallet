@@ -22,7 +22,9 @@
       "infoPlist": {
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["trinwallet"]
+            "CFBundleURLSchemes": [
+              "trinwallet"
+            ]
           }
         ],
         "NSFaceIDUsageDescription": "This app uses Face ID to secure your digital wallet"
@@ -43,7 +45,10 @@
               "host": "auth"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "package": "edu.trincoll.trinitywallet"
@@ -60,7 +65,8 @@
         {
           "faceIDPermission": "This app uses Face ID to secure your digital wallet"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
