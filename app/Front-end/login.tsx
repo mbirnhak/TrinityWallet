@@ -29,7 +29,7 @@ export default function Login() {
             const success = await auth.authenticate();
 
             if (success) {
-                router.replace('./Front-end/home');
+                router.replace('./home');
             } else {
                 const { error } = auth.getAuthState();
                 Alert.alert(

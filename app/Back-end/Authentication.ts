@@ -8,11 +8,11 @@ const config = {
     // issuer: 'https://login.microsoftonline.com/common', //use common (common/v2.0 only allows work/school) for multi-tenant sign in, use tenant id for tenant specific sign in
     clientId: 'a4bde670-76fa-4bcf-8592-3c378e086e23',
     redirectUrl: 'trinwallet://auth/',
-    scopes: ['openid'],
+    scopes: ['openid','email'],
     additionalParameters: {
         prompt: 'login'
     },
-    usePKCE: true
+    usePKCE: true,
 };
 
 class AuthenticationService {
