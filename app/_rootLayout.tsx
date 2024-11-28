@@ -2,18 +2,28 @@
 
 import { Stack } from "expo-router";
 import { useEffect, useState } from "react";
-import AuthenticationService from "./Back-end/Authentication";
+import AuthenticationService from "./backend/Authentication";
+import * as SecureStore from 'expo-secure-store';
 
 export default function RootLayout() {
     const [isInitialized, setIsInitialized] = useState(false);
 
     useEffect(() => {
-        checkAuth();
+        checkInitialRoute();
     }, []);
 
-    const checkAuth = async () => {
+    const checkInitialRoute = async () => {
         const auth = AuthenticationService.getInstance();
-        await auth.checkAuthStatus();
+        const isFirstTime = await auth.isFirstTimeUser();
+        const isAuthenticated = await auth.checkAuthStatus();
+        const lastRestartTime = await SecureStore.getItemAsync('lastRestartTime');
+        const currentTime = Date.now().toString();
+
+        // Store new restart time if needed
+        if (!lastRestartTime) {
+            await SecureStore.setItemAsync('lastRestartTime', currentTime);
+        }
+
         setIsInitialized(true);
     };
 
@@ -22,29 +32,44 @@ export default function RootLayout() {
     }
 
     return (
-        <Stack>
+        <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen 
-                name="index" 
+                name="index"
                 options={{ 
-                    title: "Trinity Wallet",
-                    headerShown: false 
-                }} 
+                    title: "Trinity Wallet"
+                }}
             />
             <Stack.Screen 
-                name="frontend/login" 
+                name="frontend/login"
                 options={{ 
-                    title: "Login",
-                    headerShown: false,
+                    gestureEnabled: false
+                }}
+            />
+            <Stack.Screen 
+                name="frontend/auth/pin-login"
+                options={{ 
+                    gestureEnabled: false
+                }}
+            />
+            <Stack.Screen 
+                name="frontend/registration/pin-setup"
+                options={{ 
+                    gestureEnabled: false
+                }}
+            />
+            <Stack.Screen 
+                name="frontend/registration/biometric-setup"
+                options={{ 
+                    gestureEnabled: false
+                }}
+            />
+            <Stack.Screen 
+                name="frontend/home"
+                options={{ 
                     gestureEnabled: false,
-                }} 
-            />
-            <Stack.Screen 
-                name="frontend/home" 
-                options={{ 
-                    title: "Home",
                     headerShown: true,
-                    gestureEnabled: false,
-                }} 
+                    title: "Trinity Wallet"
+                }}
             />
         </Stack>
     );

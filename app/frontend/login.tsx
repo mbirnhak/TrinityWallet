@@ -5,7 +5,7 @@ import { StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-na
 import { router } from 'expo-router';
 import { ThemedText } from '../../components/ThemedText';
 import { ThemedView } from '../../components/ThemedView';
-import AuthenticationService from '../Back-end/Authentication';
+import AuthenticationService from '../backend/Authentication';
 
 export default function Login() {
     const [isLoading, setIsLoading] = useState(false);
