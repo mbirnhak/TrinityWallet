@@ -18,7 +18,7 @@ export default function Login() {
         const auth = AuthenticationService.getInstance();
         const isAuthenticated = await auth.checkAuthStatus();
         if (isAuthenticated) {
-            router.replace('/'); // Changed from '/(tabs)/home' to '/'
+            router.replace('./Front-end/home');
         }
     };
 
@@ -29,7 +29,7 @@ export default function Login() {
             const success = await auth.authenticate();
 
             if (success) {
-                router.replace('/'); // Changed from '/(tabs)/home' to '/'
+                router.replace('./Front-end/home');
             } else {
                 const { error } = auth.getAuthState();
                 Alert.alert(

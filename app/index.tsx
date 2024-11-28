@@ -15,9 +15,9 @@ export default function Index() {
         const isAuthenticated = await auth.checkAuthStatus();
         
         if (isAuthenticated) {
-            router.replace('/Back-end/Authentication');
+            router.replace('./frontend/home');
         } else {
-            router.replace('/Front-end/login');
+            router.replace('./frontend/login');
         }
     };
 

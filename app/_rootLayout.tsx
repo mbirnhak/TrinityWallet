@@ -18,7 +18,7 @@ export default function RootLayout() {
     };
 
     if (!isInitialized) {
-        return null; // Or a loading screen
+        return null;
     }
 
     return (
@@ -35,7 +35,14 @@ export default function RootLayout() {
                 options={{ 
                     title: "Login",
                     headerShown: false,
-                    // Prevent going back to login once authenticated
+                    gestureEnabled: false,
+                }} 
+            />
+            <Stack.Screen 
+                name="frontend/home" 
+                options={{ 
+                    title: "Home",
+                    headerShown: true,
                     gestureEnabled: false,
                 }} 
             />
