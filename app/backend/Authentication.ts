@@ -4,13 +4,14 @@ import * as AuthSession from 'expo-auth-session';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
-import decode from 'expo-jwt'
+import { jwtDecode } from 'jwt-decode';
+import { useIdTokenAuthRequest } from 'expo-auth-session/build/providers/Google';
 
 const OPENID_CONFIG = {
     issuer: 'https://login.microsoftonline.com/4ba15b4b-7d11-4be1-a2fb-df28939a3e0c/v2.0',
     clientId: 'a4bde670-76fa-4bcf-8592-3c378e086e23',
     redirectUrl: 'trinwallet://auth/',
-    scopes: ['openid'],
+    scopes: ['openid','email'],
     additionalParameters: {
         prompt: 'login'
     },
@@ -60,9 +61,15 @@ class AuthenticationService {
         return (isRegistered !== 'true' && !!hasPin);
     }
 
-    const decodeAzureIdToken = (token) => {
+    // Decodes JWT Token and returns the decoded form or null
+    decodeToken(token: string) {
         try {
-            const decoded = decode(token)
+            const decoded = jwtDecode(token);
+            console.log(decoded);
+            return decoded;
+        } catch (error) {
+            console.error('Erro Decoding JWT Token: ', error);
+            return null;
         }
     }
 
@@ -100,9 +107,11 @@ class AuthenticationService {
                 );
 
                 if (tokenResponse.idToken) {
-
                     if (reRegistering === true) {
-                        const emailMatches = await this.verify(storedValueKeys.EMAIL, authenticatedEmail)
+                        //extract email from JWT token
+                        const decoded = this.decodeToken(tokenResponse.idToken);
+
+                        //const emailMatches = await this.verify(storedValueKeys.EMAIL, )
 
                         if (emailMatches) {
                             await SecureStore.setItemAsync('idToken', tokenResponse.idToken);
