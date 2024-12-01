@@ -2,6 +2,11 @@
 import * as AuthSession from 'expo-auth-session'
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
+import { jwtDecode, JwtPayload } from 'jwt-decode';
+
+interface CustomJwtPayload extends JwtPayload {
+    email?: string;
+}
 
 const config = {
     issuer: 'https://login.microsoftonline.com/4ba15b4b-7d11-4be1-a2fb-df28939a3e0c/v2.0',
@@ -36,6 +41,18 @@ class AuthenticationService {
         return AuthenticationService.instance;
     }
 
+    // Decodes JWT Token and returns the decoded form or null
+    decodeToken(token: string) {
+        try {
+            const decoded = jwtDecode(token);
+            console.log(decoded);
+            return decoded;
+        } catch (error) {
+            console.error('Erro Decoding JWT Token: ', error);
+            return null;
+        }
+    }
+
     async performOpenIDAuthentication(): Promise<boolean> {
         try {
             console.log('Starting OpenID authentication...');
@@ -68,6 +85,8 @@ class AuthenticationService {
 
                 if(tokenResponse.idToken){
                     console.log('Authentication Successfull!')
+                    const decoded: CustomJwtPayload | null = this.decodeToken(tokenResponse.idToken);
+                    console.log(decoded?.email);
                     await SecureStore.setItemAsync('idToken', tokenResponse.idToken);
                     this.authState.idToken = tokenResponse.idToken;
                     return true;
