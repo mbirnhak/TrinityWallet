@@ -1,4 +1,4 @@
-// app/frontend/auth/pin-login.tsx
+// app/frontend/auth/login.tsx
 
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, TouchableOpacity, Alert, AppState } from 'react-native';
@@ -6,7 +6,6 @@ import { router } from 'expo-router';
 import { ThemedText } from '../../../components/ThemedText';
 import { ThemedView } from '../../../components/ThemedView';
 import AuthenticationService from '../../backend/Authentication';
-import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
 export default function PinLogin() {
@@ -57,9 +56,9 @@ export default function PinLogin() {
     const handleBiometricAuth = async () => {
         try {
             const auth = AuthenticationService.getInstance();
-            const success = await auth.authenticateWithBiometrics();
+            const success = await auth.authenticate();
             if (success) {
-                router.replace('../frontend/home');
+                router.replace('../home');
             }
         } catch (error) {
             console.error('Biometric authentication error:', error);
@@ -85,7 +84,7 @@ export default function PinLogin() {
             if (isValid) {
                 await SecureStore.setItemAsync('lastRestartTime', Date.now().toString());
                 setRequirePin(false);
-                router.replace('../frontend/home');
+                router.replace('../main/home');
             } else {
                 setAttempts(prev => prev + 1);
                 if (attempts + 1 >= MAX_ATTEMPTS) {
@@ -113,7 +112,7 @@ export default function PinLogin() {
             [
                 {
                     text: 'OK',
-                    onPress: () => router.replace('../frontend/login')
+                    onPress: () => router.replace('../registration/registration')
                 }
             ]
         );

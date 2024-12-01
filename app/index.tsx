@@ -15,16 +15,16 @@ export default function Index() {
         try {
             const auth = AuthenticationService.getInstance();
             const isFirstTime = await auth.isFirstTimeUser();
-            const isAuthenticated = await auth.checkAuthStatus();
+            const isAuthenticated = await auth.checkLoginStatus();
             const lastRestartTime = await SecureStore.getItemAsync('lastRestartTime');
 
             if (isFirstTime) {
-                router.replace('./frontend/login');
+                router.replace('./frontend/registration/registration');
             } else if (!isAuthenticated) {
-                router.replace('./frontend/auth/pin-login');
+                router.replace('./frontend/auth/login');
             } else if (!lastRestartTime) {
                 // Device was restarted, force PIN login
-                router.replace('./frontend/auth/pin-login');
+                router.replace('./frontend/auth/login');
             } else {
                 router.replace('./frontend/home');
             }

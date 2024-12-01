@@ -4,6 +4,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
+import decode from 'expo-jwt'
 
 const OPENID_CONFIG = {
     issuer: 'https://login.microsoftonline.com/4ba15b4b-7d11-4be1-a2fb-df28939a3e0c/v2.0',
@@ -16,11 +17,19 @@ const OPENID_CONFIG = {
     usePKCE: true
 };
 
-interface AuthState {
+export interface AuthState {
     isAuthenticated: boolean;
     idToken: string | null;
+    wte: {} | null;
+    wia: {} | null;
     error: string | null;
     isRegistered: boolean;
+}
+
+// List of all keys used to store values in Secure Store
+export enum storedValueKeys {
+    PIN = 'walletPIN',
+    EMAIL = 'hashedEmail',
 }
 
 class AuthenticationService {
@@ -28,6 +37,8 @@ class AuthenticationService {
     private authState: AuthState = {
         isAuthenticated: false,
         idToken: null,
+        wte: null,
+        wia: null,
         error: null,
         isRegistered: false
     };
@@ -42,31 +53,26 @@ class AuthenticationService {
         return AuthenticationService.instance;
     }
 
+    // returns true if the the user is not registered with OpenIDC and does not have a PIN already saved
     async isFirstTimeUser(): Promise<boolean> {
         const isRegistered = await SecureStore.getItemAsync('isRegistered');
-        return isRegistered !== 'true';
+        const hasPin = await SecureStore.getItemAsync('walletPIN')
+        return (isRegistered !== 'true' && !!hasPin);
     }
 
-    async verifyPin(inputPin: string): Promise<boolean> {
+    const decodeAzureIdToken = (token) => {
         try {
-            const storedPinData = await SecureStore.getItemAsync('walletPIN');
-            if (!storedPinData) return false;
-
-            const { hash: storedHash, salt } = JSON.parse(storedPinData);
-            const pinWithSalt = inputPin + salt;
-            const inputHash = await Crypto.digestStringAsync(
-                Crypto.CryptoDigestAlgorithm.SHA256,
-                pinWithSalt
-            );
-
-            return storedHash === inputHash;
-        } catch (error) {
-            console.error('PIN verification error:', error);
-            return false;
+            const decoded = decode(token)
         }
     }
 
-    async performOpenIDAuthentication(): Promise<boolean> {
+    /**
+     * Perform OpenID Connect Authentication to Microsoft Azure. Only done during registration
+     * or after a specified time period.
+     * 
+     * @returns True if successfully authenticated, or false if not
+     */
+    async performOpenIDAuthentication(reRegistering: boolean = false): Promise<boolean> {
         try {
             const discovery = await AuthSession.fetchDiscoveryAsync(OPENID_CONFIG.issuer);
             const authRequest = new AuthSession.AuthRequest({
@@ -94,11 +100,27 @@ class AuthenticationService {
                 );
 
                 if (tokenResponse.idToken) {
-                    await SecureStore.setItemAsync('idToken', tokenResponse.idToken);
-                    this.authState.idToken = tokenResponse.idToken;
-                    return true;
+
+                    if (reRegistering === true) {
+                        const emailMatches = await this.verify(storedValueKeys.EMAIL, authenticatedEmail)
+
+                        if (emailMatches) {
+                            await SecureStore.setItemAsync('idToken', tokenResponse.idToken);
+                            this.authState.idToken = tokenResponse.idToken;
+                            return true;
+                        } else {
+                            console.log('Email does not matched the one you registered with')
+                            return false;
+                        }
+
+                    }
+
+                } else {
+                    console.log("ID Token was empty: ", tokenResponse.idToken);
+                    return false;
                 }
             }
+            console.log("OpenIDC Authentication Failed");
             return false;
         } catch (error) {
             console.error('OpenID Authentication Error:', error);
@@ -106,7 +128,43 @@ class AuthenticationService {
         }
     }
 
-    async authenticateWithBiometrics(): Promise<boolean> {
+    /**
+     * Checks whether the value entered matches the hash stored
+     * 
+     * @param key The string used to store the value in the key store
+     * @param value The string that is being checked for correctness
+     * @returns True if the value is correct, otherwise false
+     */
+    async verify(key: string, value: string | null): Promise<boolean> {
+        if (value === null) {
+            console.log('Value enter is null: ', value);
+            return false;
+        }
+
+        try {
+            const storedData = await SecureStore.getItemAsync(key);
+            if (!storedData) return false;
+
+            const { hash: storedHash, salt } = JSON.parse(storedData);
+            const valueSalt = value + salt;
+            const inputHash = await Crypto.digestStringAsync(
+                Crypto.CryptoDigestAlgorithm.SHA256,
+                valueSalt
+            );
+
+            return storedHash === inputHash;
+        } catch (error) {
+            console.error('Hash Verification Error:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Authenticates the user using biometrics if it is available.
+     * 
+     * @returns True if successful, false if unsuccesfull or not available
+     */
+    private async authenticateWithBiometrics(): Promise<boolean> {
         try {
             const biometricsEnabled = await SecureStore.getItemAsync('biometricsEnabled');
             if (biometricsEnabled !== 'true') return false;
@@ -128,18 +186,50 @@ class AuthenticationService {
         }
     }
 
+    /**
+     * Register the user with OpenIDC and create a PIN
+     * 
+     * @returns true if successful
+     */
+    async registerAndCreatePin(): Promise<boolean> {
+        try {
+            const openIdSuccess = await this.performOpenIDAuthentication();
+            if (!openIdSuccess) {
+                throw new Error('OpenID authentication failed');
+            }
+            return true;
+        } catch (error) {
+            this.authState.error = error instanceof Error ? error.message : 'Authentication failed';
+            return false;
+        }
+    }
+
+    /**
+     * Register the user with OpenIDC and verify that they still know their PIN
+     * 
+     * @returns true if successful
+     */
+    async registerAndVerifyPin(): Promise<boolean> {
+        try {
+            const openIdSuccess = await this.performOpenIDAuthentication();
+            if (!openIdSuccess) {
+                throw new Error('OpenID authentication failed');
+            }
+            return true;
+        } catch (error) {
+            this.authState.error = error instanceof Error ? error.message : 'Authentication failed';
+            return false;
+        }
+    }
+
+    /**
+     * Authenticate the user with either PIN or Biometrics
+     * 
+     * @param forcePIN Forces the user to sign in using PIN if set True, else it uses Biometrics for login
+     * @returns True if the user is successfully authenticated, false if unsuccessful or if PIN is required
+     */
     async authenticate(forcePIN: boolean = false): Promise<boolean> {
         try {
-            // First-time user flow
-            const isFirstTime = await this.isFirstTimeUser();
-            if (isFirstTime) {
-                const openIdSuccess = await this.performOpenIDAuthentication();
-                if (!openIdSuccess) {
-                    throw new Error('OpenID authentication failed');
-                }
-                return true;
-            }
-
             // Regular authentication flow
             if (!forcePIN) {
                 const biometricSuccess = await this.authenticateWithBiometrics();
@@ -148,7 +238,6 @@ class AuthenticationService {
                     return true;
                 }
             }
-
             // PIN is required or biometric failed
             return false; // Let the UI handle PIN input
         } catch (error) {
@@ -157,23 +246,47 @@ class AuthenticationService {
         }
     }
 
+    // Logout but remain authenticate with OpenIDC (just need to enter PIN or Biometrics to log back in)
     async logout(): Promise<void> {
+        this.authState = {
+            isAuthenticated: false,
+            idToken: null,
+            wte: null,
+            wia: null,
+            error: null,
+            isRegistered: true,
+        };
+    }
+
+    // Logout and rest Authenticate with OpenIDC (need to re-auth with OpenIDC and confirm PIN)
+    async deAuthorize(): Promise<void> {
         await SecureStore.deleteItemAsync('idToken');
         this.lastAuthMethod = null;
         this.authState = {
             isAuthenticated: false,
             idToken: null,
+            wte: null,
+            wia: null,
             error: null,
-            isRegistered: true
+            isRegistered: false,
         };
     }
 
-    async checkAuthStatus(): Promise<boolean> {
+    async checkRegistrationStatus(): Promise<boolean> {
         const token = await SecureStore.getItemAsync('idToken');
-        this.authState.isAuthenticated = !!token;
+        const wte = await SecureStore.getItemAsync('wte');
+        const wia = await SecureStore.getItemAsync('wia');
         this.authState.idToken = token;
+        this.authState.wte = wte;
+        this.authState.wia = wia;
         const isRegistered = await SecureStore.getItemAsync('isRegistered');
         this.authState.isRegistered = isRegistered === 'true';
+        return this.authState.isRegistered;
+    }
+
+    async checkLoginStatus(): Promise<boolean> {
+        const isAuthenticated = await SecureStore.getItemAsync('isAuthenticated');
+        this.authState.isAuthenticated = isAuthenticated === 'true';
         return this.authState.isAuthenticated;
     }
 

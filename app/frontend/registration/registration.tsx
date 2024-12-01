@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
-import { ThemedText } from '../../components/ThemedText';
-import { ThemedView } from '../../components/ThemedView';
-import AuthenticationService from '../backend/Authentication';
+import { ThemedText } from '../../../components/ThemedText';
+import { ThemedView } from '../../../components/ThemedView';
+import AuthenticationService from '../../backend/Authentication';
 
 export default function Login() {
     const [isLoading, setIsLoading] = useState(false);
@@ -16,20 +16,20 @@ export default function Login() {
 
     const checkExistingAuth = async () => {
         const auth = AuthenticationService.getInstance();
-        const isAuthenticated = await auth.checkAuthStatus();
+        const isAuthenticated = await auth.checkLoginStatus();
         if (isAuthenticated) {
-            router.replace('./Front-end/home');
+            router.replace('./home');
         }
     };
 
-    const handleLogin = async () => {
+    const handleRegistration = async () => {
         setIsLoading(true);
         try {
             const auth = AuthenticationService.getInstance();
             const success = await auth.authenticate();
 
             if (success) {
-                router.replace('./Front-end/home');
+                router.replace('./pin-setup');
             } else {
                 const { error } = auth.getAuthState();
                 Alert.alert(
@@ -64,11 +64,11 @@ export default function Login() {
             ) : (
                 <TouchableOpacity
                     style={styles.loginButton}
-                    onPress={handleLogin}
+                    onPress={handleRegistration}
                     disabled={isLoading}
                 >
                     <ThemedText style={styles.loginButtonText}>
-                        Login with Microsoft
+                        Register with your Microsoft account
                     </ThemedText>
                 </TouchableOpacity>
             )}

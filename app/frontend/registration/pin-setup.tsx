@@ -78,7 +78,7 @@ export default function PinSetup() {
             // Store biometric preference
             await SecureStore.setItemAsync('useBiometrics', 'true');
             
-            router.replace('./frontend/biometric-setup');
+            router.replace('./biometric-setup');
         } catch (error) {
             Alert.alert('Error', 'Failed to save PIN. Please try again.');
             setState({ step: 'initial', pin: '', confirmPin: '' });

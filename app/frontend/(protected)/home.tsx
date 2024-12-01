@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { ThemedText } from '../../components/ThemedText';
-import { ThemedView } from '../../components/ThemedView';
+import { ThemedText } from '../../../components/ThemedText';
+import { ThemedView } from '../../../components/ThemedView';
 
 // Home screen : When the user is able to successfully register from the registration page then they are redirected to this page. 
 // Next step would be to use the PIN to acces the wallet. 

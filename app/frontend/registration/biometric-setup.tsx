@@ -48,19 +48,19 @@ export default function BiometricSetup() {
 
             if (result.success) {
                 await SecureStore.setItemAsync('biometricsEnabled', 'true');
-                router.replace('../frontend/home');
+                router.replace('../home');
             } else {
-                router.replace('../frontend/home');
+                router.replace('../home');
             }
         } catch (error) {
             console.error('Biometric setup failed:', error);
-            router.replace('../frontend/home');
+            router.replace('../home');
         }
     };
 
     const handleSkip = async () => {
         await SecureStore.setItemAsync('biometricsEnabled', 'false');
-        router.replace('../frontend/home');
+        router.replace('../home');
     };
 
     return (
