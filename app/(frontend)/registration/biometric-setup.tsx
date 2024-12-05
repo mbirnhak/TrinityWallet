@@ -3,65 +3,32 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
-import { ThemedText } from '../../../components/ThemedText';
-import { ThemedView } from '../../../components/ThemedView';
+import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
+import { storedValueKeys } from '@/app/backend/Authentication';
+import { useAuth } from '@/context/AuthContext';
+
+
+//await SecureStore.setItemAsync(storedValueKeys.BIOMETRIC_CONSENT, "", {requireAuthentication: true});
+
 
 export default function BiometricSetup() {
     const [biometricType, setBiometricType] = useState<'face' | 'fingerprint' | null>(null);
-
-    useEffect(() => {
-        checkBiometricSupport();
-    }, []);
+    const { signIn, authState, isLoading } = useAuth();
 
     const checkBiometricSupport = async () => {
-        try {
-            const hasHardware = await LocalAuthentication.hasHardwareAsync();
-            const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-            
-            if (!hasHardware || !isEnrolled) {
-                // Skip biometric setup if not available
-                router.replace('../frontend/home');
-                return;
-            }
-
-            const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
-            if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-                setBiometricType('face');
-            } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
-                setBiometricType('fingerprint');
-            }
-        } catch (error) {
-            console.error('Biometric support check failed:', error);
-            router.replace('../frontend/home');
+        const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+        if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+            setBiometricType('face');
+        } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+            setBiometricType('fingerprint');
         }
-    };
-
+    }
     const handleEnableBiometrics = async () => {
-        try {
-            const result = await LocalAuthentication.authenticateAsync({
-                promptMessage: 'Verify to enable biometric login',
-                disableDeviceFallback: false,
-                fallbackLabel: 'Use PIN instead'
-            });
-
-            if (result.success) {
-                await SecureStore.setItemAsync('biometricsEnabled', 'true');
-                router.replace('../home');
-            } else {
-                router.replace('../home');
-            }
-        } catch (error) {
-            console.error('Biometric setup failed:', error);
-            router.replace('../home');
-        }
-    };
-
-    const handleSkip = async () => {
-        await SecureStore.setItemAsync('biometricsEnabled', 'false');
-        router.replace('../home');
-    };
+        signIn();
+    }
 
     return (
         <ThemedView style={styles.container}>
@@ -70,9 +37,7 @@ export default function BiometricSetup() {
             </ThemedText>
 
             <ThemedText type="subtitle" style={styles.subtitle}>
-                {biometricType === 'face' 
-                    ? 'Use Face ID for quick and secure access to your wallet'
-                    : 'Use Touch ID for quick and secure access to your wallet'}
+                {'Use Biometrics for quick and secure access to your wallet'}
             </ThemedText>
 
             <TouchableOpacity
@@ -86,7 +51,7 @@ export default function BiometricSetup() {
 
             <TouchableOpacity
                 style={styles.secondaryButton}
-                onPress={handleSkip}
+                onPress={() => { router.replace('/frontend/(protected)/home'); }}
             >
                 <ThemedText style={styles.secondaryButtonText}>
                     Skip for now

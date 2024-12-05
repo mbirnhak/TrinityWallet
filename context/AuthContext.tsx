@@ -4,9 +4,12 @@ import { useStorageState } from '@/hooks/useStorageState';
 
 interface AuthProps {
     authState: AuthState;
+    isFirstTimeUser: () => Promise<boolean | null>;
     signIn: (forcePin: boolean) => Promise<boolean>;
     signOut: () => void;
-    register: () => Promise<boolean>;
+    unRegister: () => void;
+    register: (firstTimeUser: boolean) => Promise<boolean>;
+    setForcePin: (forcePin: boolean) => Promise<void>;
     isLoading: boolean;
 }
 
@@ -17,13 +20,17 @@ const initialAuthState: AuthState = {
     wia: null,
     error: null,
     isRegistered: false,
+    forcePin: false,
 }
 
 const AuthContext = createContext<AuthProps>({
     authState: initialAuthState,
+    isFirstTimeUser: async () => false,
     signIn: async (forcePin: boolean) => false,
-    signOut: () => null,
-    register: async () => false,
+    signOut: () => { },
+    unRegister: () => { },
+    register: async (firstTimeUser: boolean) => false,
+    setForcePin: async (forcePin: boolean) => { },
     isLoading: false,
 })
 
@@ -37,6 +44,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const auth = AuthenticationService.getInstance();
 
     /**
+     * Checks if user is a first time user.
+     */
+    const isFirstTimeUser = async () => {
+        setIsLoading(true);
+        try {
+            const firstTime = await auth.isFirstTimeUser();
+            return firstTime;
+        } catch (error) {
+            console.error('Logout failed with error: ', error);
+            return null;
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    /**
      * Signs the user in using biometrics or return false and 
      * defers to the front end for pin entry
      * 
@@ -47,17 +70,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setIsLoading(true);
         try {
             const success = await auth.authenticate(forcePin);
-            if (success) {
-                setAuthState((prevState) => ({
-                    ...prevState,
-                    isAuthenticated: true,
-                }));                    
-            } else {
-                setAuthState({
-                    ...authState,
-                    isAuthenticated: false
-                });   
-            }
+            setAuthState({
+                ...authState,
+                isAuthenticated: success,
+            });
             return success
         } catch (error) {
             console.error('Authentication failed with error: ', error);
@@ -68,12 +84,30 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
 
     /**
-     * Fully signs the user out.
+     * Signs the user out. Leaves them registered.
      */
     const signOut = async () => {
         setIsLoading(true);
         try {
             await auth.logout();
+            setAuthState({
+                ...initialAuthState,
+                isRegistered: true,
+            });
+        } catch (error) {
+            console.error('Logout failed with error: ', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    /**
+     * Fully signs the user out and unregisters them with Microsoft.
+     */
+    const unRegister = async () => {
+        setIsLoading(true);
+        try {
+            await auth.deAuthorize();
             setAuthState(initialAuthState);
         } catch (error) {
             console.error('Logout failed with error: ', error);
@@ -89,10 +123,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
      * but they have an existing account.
      *  
      * */
-    const register = async () => {
+    const register = async (firstTimeUser: boolean) => {
         setIsLoading(true);
         try {
-            const success = await auth.performOpenIDAuthentication();
+            const success = await auth.performOpenIDAuthentication(firstTimeUser);
             return success;
         } catch (error) {
             console.error('Error Registering with OpenIDC: ', error);
@@ -102,8 +136,25 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
     }
 
+    const setForcePin = async (forcePin: boolean) => {
+        setAuthState({
+            ...authState,
+            forcePin,
+        })
+    }
+
+    console.log("AuthContext initialized");
     return (
-        <AuthContext.Provider value={{ authState, signIn, signOut, register, isLoading }}>
+        <AuthContext.Provider value={{
+            isFirstTimeUser,
+            authState,
+            signIn,
+            signOut,
+            unRegister,
+            register,
+            setForcePin,
+            isLoading,
+        }}>
             {children}
         </AuthContext.Provider>
     )

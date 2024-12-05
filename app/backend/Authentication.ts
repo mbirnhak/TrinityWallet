@@ -3,9 +3,12 @@
 import * as AuthSession from 'expo-auth-session';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
-import * as Crypto from 'expo-crypto';
-import { jwtDecode } from 'jwt-decode';
-import { useIdTokenAuthRequest } from 'expo-auth-session/build/providers/Google';
+import { jwtDecode, JwtPayload } from 'jwt-decode';
+import { generateSalt, hash, verifyAgainstHash } from './crypto';
+
+interface CustomJwtPayload extends JwtPayload {
+    email?: string;
+}
 
 const OPENID_CONFIG = {
     issuer: 'https://login.microsoftonline.com/4ba15b4b-7d11-4be1-a2fb-df28939a3e0c/v2.0',
@@ -25,12 +28,15 @@ export interface AuthState {
     wia: {} | null;
     error: string | null;
     isRegistered: boolean;
+    forcePin: boolean;
 }
 
 // List of all keys used to store values in Secure Store
 export enum storedValueKeys {
     PIN = 'walletPIN',
     EMAIL = 'hashedEmail',
+    ID_TOKEN = 'idToken',
+    BIOMETRIC_CONSENT = 'biometricConsent',
 }
 
 class AuthenticationService {
@@ -41,7 +47,8 @@ class AuthenticationService {
         wte: null,
         wia: null,
         error: null,
-        isRegistered: false
+        isRegistered: false,
+        forcePin: false,
     };
     private lastAuthMethod: 'PIN' | 'BIOMETRIC' | null = null;
 
@@ -55,10 +62,18 @@ class AuthenticationService {
     }
 
     // returns true if the the user is not registered with OpenIDC and does not have a PIN already saved
-    async isFirstTimeUser(): Promise<boolean> {
-        const isRegistered = await SecureStore.getItemAsync('isRegistered');
-        const hasPin = await SecureStore.getItemAsync('walletPIN')
-        return (isRegistered !== 'true' && !!hasPin);
+    async isFirstTimeUser(): Promise<boolean | null> {
+        try {
+            const isRegistered = await SecureStore.getItemAsync('isRegistered');
+            const hasPin = await SecureStore.getItemAsync(storedValueKeys.PIN)
+            if (isRegistered === null || hasPin === null) {
+                return false;
+            }
+            return (isRegistered !== 'true' && !!hasPin);
+        } catch (error) {
+            console.error('Error retrieving value from storage: ', error);
+            return null;
+        }
     }
 
     // Decodes JWT Token and returns the decoded form or null
@@ -79,7 +94,7 @@ class AuthenticationService {
      * 
      * @returns True if successfully authenticated, or false if not
      */
-    async performOpenIDAuthentication(reRegistering: boolean = false): Promise<boolean> {
+    async performOpenIDAuthentication(firstTimeUser: boolean = false): Promise<boolean> {
         try {
             const discovery = await AuthSession.fetchDiscoveryAsync(OPENID_CONFIG.issuer);
             const authRequest = new AuthSession.AuthRequest({
@@ -92,6 +107,7 @@ class AuthenticationService {
 
             const authResult = await authRequest.promptAsync(discovery);
             
+            // check if the request was successful, if so exchange authorization code for tokens
             if (authResult.type === 'success' && authResult.params.code) {
                 const accessTokenConfig: AuthSession.AccessTokenRequestConfig = {
                     code: authResult.params.code,
@@ -106,24 +122,44 @@ class AuthenticationService {
                     discovery
                 );
 
+                /**
+                 * if token response contains an id token, try to extract the email and either check
+                 * it against stored email hash, or store it if its a first time user
+                 *  */
                 if (tokenResponse.idToken) {
-                    if (reRegistering === true) {
-                        //extract email from JWT token
-                        const decoded = this.decodeToken(tokenResponse.idToken);
+                    // extract email from JWT token
+                    const decoded: CustomJwtPayload | null = this.decodeToken(tokenResponse.idToken);
+                    const emailEntered = decoded?.email ?? null;
+                    
+                    // return error if email is not shown
+                    if (!emailEntered) {
+                        console.error('Error Extracting Email from JWT: ', decoded);
+                        return false;
+                    }
 
-                        //const emailMatches = await this.verify(storedValueKeys.EMAIL, )
+                    // if a user is re-registering check their email against the stored one, else store their email
+                    if (firstTimeUser !== true) {
+                        const emailMatches = await verifyAgainstHash(storedValueKeys.EMAIL, emailEntered)
 
                         if (emailMatches) {
-                            await SecureStore.setItemAsync('idToken', tokenResponse.idToken);
+                            await SecureStore.setItemAsync(storedValueKeys.ID_TOKEN, tokenResponse.idToken);
                             this.authState.idToken = tokenResponse.idToken;
                             return true;
                         } else {
                             console.log('Email does not matched the one you registered with')
                             return false;
                         }
-
+                    } else {
+                        await SecureStore.setItemAsync(storedValueKeys.ID_TOKEN, tokenResponse.idToken);
+                        const hashedEmail = await hash(emailEntered, await generateSalt());
+                        if (!hashedEmail) {
+                            console.error('Failed to hash the email, aborting registration.');
+                            return false; // Abort the process if hashing fails
+                        }
+                        await SecureStore.setItemAsync(storedValueKeys.EMAIL, hashedEmail);
+                        this.authState.idToken = tokenResponse.idToken;
+                        return true;
                     }
-
                 } else {
                     console.log("ID Token was empty: ", tokenResponse.idToken);
                     return false;
@@ -138,50 +174,40 @@ class AuthenticationService {
     }
 
     /**
-     * Checks whether the value entered matches the hash stored
+     * Checks availability to use biometrics.
      * 
-     * @param key The string used to store the value in the key store
-     * @param value The string that is being checked for correctness
-     * @returns True if the value is correct, otherwise false
+     * @returns true if biomeitrc are enrolled, available, and user has consented to use them, 
+     * otherwise it returns false.
      */
-    async verify(key: string, value: string | null): Promise<boolean> {
-        if (value === null) {
-            console.log('Value enter is null: ', value);
+    private async biometricAvailability(): Promise<boolean> {
+        const hasHardware = await LocalAuthentication.hasHardwareAsync();
+        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+        const userConsent = await SecureStore.getItemAsync(storedValueKeys.BIOMETRIC_CONSENT);
+
+        if (!hasHardware || !isEnrolled || !userConsent) {
+            console.error('Biometrics not enrolled, available, or user has not consented');
             return false;
         }
 
-        try {
-            const storedData = await SecureStore.getItemAsync(key);
-            if (!storedData) return false;
-
-            const { hash: storedHash, salt } = JSON.parse(storedData);
-            const valueSalt = value + salt;
-            const inputHash = await Crypto.digestStringAsync(
-                Crypto.CryptoDigestAlgorithm.SHA256,
-                valueSalt
-            );
-
-            return storedHash === inputHash;
-        } catch (error) {
-            console.error('Hash Verification Error:', error);
-            return false;
-        }
+        return true;
     }
 
     /**
-     * Authenticates the user using biometrics if it is available.
+     * Authenticates the user using biometrics.
      * 
-     * @returns True if successful, false if unsuccesfull or not available
+     * @returns True if successful, false if biometrics are not available,
+     * it was unsuccesful, or an error occurred.
      */
     private async authenticateWithBiometrics(): Promise<boolean> {
         try {
-            const biometricsEnabled = await SecureStore.getItemAsync('biometricsEnabled');
-            if (biometricsEnabled !== 'true') return false;
+            const biometricsAvail = await this.biometricAvailability();
+            if (!biometricsAvail) { return false; }
 
             const result = await LocalAuthentication.authenticateAsync({
                 promptMessage: 'Verify your identity',
                 fallbackLabel: 'Use PIN instead',
-                disableDeviceFallback: false
+                // handle fallback using app PIN rather than device passcode
+                disableDeviceFallback: true,
             });
 
             if (result.success) {
@@ -191,42 +217,6 @@ class AuthenticationService {
             return false;
         } catch (error) {
             console.error('Biometric authentication error:', error);
-            return false;
-        }
-    }
-
-    /**
-     * Register the user with OpenIDC and create a PIN
-     * 
-     * @returns true if successful
-     */
-    async registerAndCreatePin(): Promise<boolean> {
-        try {
-            const openIdSuccess = await this.performOpenIDAuthentication();
-            if (!openIdSuccess) {
-                throw new Error('OpenID authentication failed');
-            }
-            return true;
-        } catch (error) {
-            this.authState.error = error instanceof Error ? error.message : 'Authentication failed';
-            return false;
-        }
-    }
-
-    /**
-     * Register the user with OpenIDC and verify that they still know their PIN
-     * 
-     * @returns true if successful
-     */
-    async registerAndVerifyPin(): Promise<boolean> {
-        try {
-            const openIdSuccess = await this.performOpenIDAuthentication();
-            if (!openIdSuccess) {
-                throw new Error('OpenID authentication failed');
-            }
-            return true;
-        } catch (error) {
-            this.authState.error = error instanceof Error ? error.message : 'Authentication failed';
             return false;
         }
     }
@@ -264,6 +254,7 @@ class AuthenticationService {
             wia: null,
             error: null,
             isRegistered: true,
+            forcePin: this.authState.forcePin,
         };
     }
 
@@ -278,29 +269,8 @@ class AuthenticationService {
             wia: null,
             error: null,
             isRegistered: false,
+            forcePin: true,
         };
-    }
-
-    async checkRegistrationStatus(): Promise<boolean> {
-        const token = await SecureStore.getItemAsync('idToken');
-        const wte = await SecureStore.getItemAsync('wte');
-        const wia = await SecureStore.getItemAsync('wia');
-        this.authState.idToken = token;
-        this.authState.wte = wte;
-        this.authState.wia = wia;
-        const isRegistered = await SecureStore.getItemAsync('isRegistered');
-        this.authState.isRegistered = isRegistered === 'true';
-        return this.authState.isRegistered;
-    }
-
-    async checkLoginStatus(): Promise<boolean> {
-        const isAuthenticated = await SecureStore.getItemAsync('isAuthenticated');
-        this.authState.isAuthenticated = isAuthenticated === 'true';
-        return this.authState.isAuthenticated;
-    }
-
-    getAuthState(): AuthState {
-        return { ...this.authState };
     }
 
     getLastAuthMethod(): string | null {

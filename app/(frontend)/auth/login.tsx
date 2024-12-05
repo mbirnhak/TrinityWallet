@@ -15,23 +15,8 @@ export default function PinLogin() {
     const [attempts, setAttempts] = useState(0);
     const MAX_ATTEMPTS = 5;
 
-    useEffect(() => {
-        checkBiometricAvailability();
-        const subscription = AppState.addEventListener('change', handleAppStateChange);
-        return () => {
-            subscription.remove();
-        };
-    }, []);
-
-    const handleAppStateChange = (nextAppState: string) => {
-        if (nextAppState === 'active') {
-            checkBiometricAvailability();
-        }
-    };
-
     const checkBiometricAvailability = async () => {
         try {
-            const biometricsEnabled = await SecureStore.getItemAsync('biometricsEnabled');
             const lastRestart = await SecureStore.getItemAsync('lastRestartTime');
             const currentTime = Date.now().toString();
 
@@ -50,18 +35,6 @@ export default function PinLogin() {
             }
         } catch (error) {
             console.error('Error checking biometric availability:', error);
-        }
-    };
-
-    const handleBiometricAuth = async () => {
-        try {
-            const auth = AuthenticationService.getInstance();
-            const success = await auth.authenticate();
-            if (success) {
-                router.replace('../home');
-            }
-        } catch (error) {
-            console.error('Biometric authentication error:', error);
         }
     };
 

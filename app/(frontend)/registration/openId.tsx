@@ -1,53 +1,47 @@
-// app/frontend/login.tsx
+// app/(frontend)/registration/openId.tsx
 
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
-import { ThemedText } from '../../../components/ThemedText';
-import { ThemedView } from '../../../components/ThemedView';
-import AuthenticationService from '../../backend/Authentication';
+import { ThemedText } from '@//components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
+import { useAuth } from "@/context/AuthContext";
 
-export default function Login() {
-    const [isLoading, setIsLoading] = useState(false);
+export default function OpenIdRegistration() {
+    const { isFirstTimeUser, register, setForcePin, isLoading } = useAuth();
+    const [firstTimeUser, setFirstTimeUser] = useState<boolean | null>(false);
 
     useEffect(() => {
-        checkExistingAuth();
+        const checkFirstTimeUser = async () => {
+            setFirstTimeUser(await isFirstTimeUser());
+            if (firstTimeUser === null) {
+                router.replace('/error');
+                return;
+            }
+            setFirstTimeUser(firstTimeUser)
+        };
+
+        checkFirstTimeUser();
     }, []);
 
-    const checkExistingAuth = async () => {
-        const auth = AuthenticationService.getInstance();
-        const isAuthenticated = await auth.checkLoginStatus();
-        if (isAuthenticated) {
-            router.replace('./home');
-        }
-    };
+    
 
     const handleRegistration = async () => {
-        setIsLoading(true);
-        try {
-            const auth = AuthenticationService.getInstance();
-            const success = await auth.authenticate();
-
-            if (success) {
-                router.replace('./pin-setup');
+        if (firstTimeUser === null) return;
+        console.log('Made it to OpenID');
+        const success = await register(firstTimeUser);
+        if (success) {
+            if (firstTimeUser) {
+                router.replace('/registration/pin-setup');
             } else {
-                const { error } = auth.getAuthState();
-                Alert.alert(
-                    'Authentication Failed',
-                    error || 'Please try again',
-                    [{ text: 'OK' }]
-                );
+                // When re-registering, force user to use PIN when they get to the login page
+                await setForcePin(true);
+                router.replace('/auth/login');
             }
-        } catch (error) {
-            Alert.alert(
-                'Error',
-                'An unexpected error occurred',
-                [{ text: 'OK' }]
-            );
-        } finally {
-            setIsLoading(false);
+        } else {
+            Alert.alert('Error', 'Registration failed. Please try again.');
         }
-    };
+    }
 
     return (
         <ThemedView style={styles.container}>
@@ -64,11 +58,11 @@ export default function Login() {
             ) : (
                 <TouchableOpacity
                     style={styles.loginButton}
-                    onPress={handleRegistration}
+                        onPress={handleRegistration}
                     disabled={isLoading}
                 >
                     <ThemedText style={styles.loginButtonText}>
-                        Register with your Microsoft account
+                        Register with Microsoft
                     </ThemedText>
                 </TouchableOpacity>
             )}
