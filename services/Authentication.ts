@@ -5,6 +5,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { jwtDecode, JwtPayload } from 'jwt-decode';
 import { generateSalt, hash, verifyAgainstHash } from './crypto';
+import { storedValueKeys } from './enums';
 
 interface CustomJwtPayload extends JwtPayload {
     email?: string;
@@ -14,7 +15,7 @@ const OPENID_CONFIG = {
     issuer: 'https://login.microsoftonline.com/4ba15b4b-7d11-4be1-a2fb-df28939a3e0c/v2.0',
     clientId: 'a4bde670-76fa-4bcf-8592-3c378e086e23',
     redirectUrl: 'trinwallet://auth/',
-    scopes: ['openid','email'],
+    scopes: ['openid', 'email'],
     additionalParameters: {
         prompt: 'login'
     },
@@ -27,16 +28,10 @@ export interface AuthState {
     wte: {} | null;
     wia: {} | null;
     error: string | null;
-    isRegistered: boolean;
+    oidcRegistered: boolean;
+    pinRegistered: boolean;
+    biometricsRegistered: boolean;
     forcePin: boolean;
-}
-
-// List of all keys used to store values in Secure Store
-export enum storedValueKeys {
-    PIN = 'walletPIN',
-    EMAIL = 'hashedEmail',
-    ID_TOKEN = 'idToken',
-    BIOMETRIC_CONSENT = 'biometricConsent',
 }
 
 class AuthenticationService {
@@ -47,12 +42,14 @@ class AuthenticationService {
         wte: null,
         wia: null,
         error: null,
-        isRegistered: false,
+        oidcRegistered: false,
+        pinRegistered: false,
+        biometricsRegistered: false,
         forcePin: false,
     };
     private lastAuthMethod: 'PIN' | 'BIOMETRIC' | null = null;
 
-    private constructor() {}
+    private constructor() { }
 
     public static getInstance(): AuthenticationService {
         if (!AuthenticationService.instance) {
@@ -61,15 +58,15 @@ class AuthenticationService {
         return AuthenticationService.instance;
     }
 
-    // returns true if the the user is not registered with OpenIDC and does not have a PIN already saved
-    async isFirstTimeUser(): Promise<boolean | null> {
+    // Returns true if the the user has an email hash already saved, otherwise false
+    async hasEmailHash(): Promise<boolean | null> {
         try {
-            const isRegistered = await SecureStore.getItemAsync('isRegistered');
-            const hasPin = await SecureStore.getItemAsync(storedValueKeys.PIN)
-            if (isRegistered === null || hasPin === null) {
+            const emailHash = await SecureStore.getItemAsync(storedValueKeys.EMAIL)
+            // if null or empty, return false
+            if (!emailHash) {
                 return false;
             }
-            return (isRegistered !== 'true' && !!hasPin);
+            return true; // email exists
         } catch (error) {
             console.error('Error retrieving value from storage: ', error);
             return null;
@@ -82,7 +79,7 @@ class AuthenticationService {
             const decoded = jwtDecode(token);
             return decoded;
         } catch (error) {
-            console.error('Erro Decoding JWT Token: ', error);
+            console.error('Error Decoding JWT Token: ', error);
             return null;
         }
     }
@@ -105,7 +102,7 @@ class AuthenticationService {
             });
 
             const authResult = await authRequest.promptAsync(discovery);
-            
+
             // check if the request was successful, if so exchange authorization code for tokens
             if (authResult.type === 'success' && authResult.params.code) {
                 const accessTokenConfig: AuthSession.AccessTokenRequestConfig = {
@@ -129,7 +126,7 @@ class AuthenticationService {
                     // extract email from JWT token
                     const decoded: CustomJwtPayload | null = this.decodeToken(tokenResponse.idToken);
                     const emailEntered = decoded?.email ?? null;
-                    
+
                     // return error if email is not shown
                     if (!emailEntered) {
                         console.error('Error Extracting Email from JWT: ', decoded);
@@ -181,7 +178,7 @@ class AuthenticationService {
     private async biometricAvailability(): Promise<boolean> {
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-        const userConsent = await SecureStore.getItemAsync(storedValueKeys.BIOMETRIC_CONSENT);
+        const userConsent = await SecureStore.getItemAsync(storedValueKeys.BIOMETRIC_REGISTERED);
 
         if (!hasHardware || !isEnrolled || !userConsent) {
             console.error('Biometrics not enrolled, available, or user has not consented');
@@ -252,11 +249,13 @@ class AuthenticationService {
             wte: null,
             wia: null,
             error: null,
-            isRegistered: true,
+            oidcRegistered: this.authState.oidcRegistered,
+            pinRegistered: this.authState.pinRegistered,
+            biometricsRegistered: this.authState.biometricsRegistered,
             forcePin: this.authState.forcePin,
         };
     }
-
+    
     // Logout and rest Authenticate with OpenIDC (need to re-auth with OpenIDC and confirm PIN)
     async deAuthorize(): Promise<void> {
         await SecureStore.deleteItemAsync('idToken');
@@ -267,7 +266,9 @@ class AuthenticationService {
             wte: null,
             wia: null,
             error: null,
-            isRegistered: false,
+            oidcRegistered: false,
+            pinRegistered: this.authState.pinRegistered,
+            biometricsRegistered: this.authState.biometricsRegistered,
             forcePin: true,
         };
     }

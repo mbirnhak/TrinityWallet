@@ -16,9 +16,11 @@ export default function Index() {
     useEffect(() => {
         if (isReady && !isLoading) {
             const determineInitialRoute = async () => {
-                const isRegistered = authState?.isRegistered;
-                if (isRegistered) {
-                    router.replace('/home');
+                const oidcRegistered = authState?.oidcRegistered;
+                const pinRegistered = authState?.pinRegistered;
+                const biometricsRegistered = authState?.biometricsRegistered;
+                if (oidcRegistered && pinRegistered && biometricsRegistered) {
+                    router.replace('/login');
                 } else {
                     router.replace('/openId');
                 }
