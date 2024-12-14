@@ -7,14 +7,15 @@ export async function generateSalt() {
 }
 
 // Simplified function for hashing a value with SHA-256
-export async function hash(value: string, salt: string) {
+export async function shaHash(value: string, salt: string) {
     try {
         const valueSalt = `${value}:${salt}`;
         const hash = await Crypto.digestStringAsync(
             Crypto.CryptoDigestAlgorithm.SHA256,
             valueSalt
         );
-        return hash;
+        const storedData = JSON.stringify({ hash: hash, salt: salt });
+        return storedData;
     } catch (error) {
         console.error('Error hashing your value: ', error);
         return null;
@@ -28,7 +29,7 @@ export async function hash(value: string, salt: string) {
  * @param value The string that is being checked for correctness
  * @returns True if the value is correct, otherwise false
  */
-export async function verifyAgainstHash(key: string, value: string | null): Promise<boolean> {
+export async function verifyAgainstShaHash(key: string, value: string | null): Promise<boolean> {
     if (value === null) {
         console.log('Value enter is null: ', value);
         return false;
@@ -37,10 +38,15 @@ export async function verifyAgainstHash(key: string, value: string | null): Prom
     try {
         const storedData = await SecureStore.getItemAsync(key);
         if (!storedData) return false;
-        const { hash: storedHash, salt } = JSON.parse(storedData);
-        const valueSalt = value + salt;
-        const inputHash = hash(value, salt);
-        return storedHash === inputHash;
+        const { hash: storedHash, salt: storedSalt } = JSON.parse(storedData);
+        const inputHashAndSalt = await shaHash(value, storedSalt);
+        if (inputHashAndSalt === null) {
+            console.error('Issue hashing input value');
+            return false;
+        } else {
+            const { hash: inputHash } = JSON.parse(inputHashAndSalt);
+            return storedHash === inputHash;
+        }
     } catch (error) {
         console.error('Hash Verification Error:', error);
         return false;
@@ -49,6 +55,6 @@ export async function verifyAgainstHash(key: string, value: string | null): Prom
 
 export default {
     generateSalt,
-    hash,
-    verifyAgainstHash
+    shaHash,
+    verifyAgainstShaHash
 };

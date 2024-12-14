@@ -1,9 +1,10 @@
-import { router } from 'expo-router';
 import { StyleSheet, Alert, Text, View, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useAuth } from '@/context/AuthContext';
-import { Buffer } from 'buffer';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { useAuth } from '@/context/AuthContext';
+import { router } from 'expo-router';
+import { Buffer } from 'buffer';
+import React from 'react';
 
 // Polyfill for Buffer (to handle error its encountering)
 global.Buffer = Buffer;

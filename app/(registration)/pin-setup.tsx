@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import * as SecureStore from 'expo-secure-store';
-import { generateSalt, hash } from '@/services/crypto';
+import { generateSalt, shaHash } from '@/services/crypto';
 import { storedValueKeys } from '@/services/enums';
 import { useAuth } from '@/context/AuthContext';
 
@@ -58,7 +58,7 @@ export default function PinSetup() {
 
         try {
             const salt = await generateSalt();
-            const hashedPinData = await hash(pin, salt);
+            const hashedPinData = await shaHash(pin, salt);
             if (!hashedPinData) {
                 console.error('Failed to hash the email, aborting registration.');
                 return false; // Abort the process if hashing fails

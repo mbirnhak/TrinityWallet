@@ -5,11 +5,15 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "trinwallet",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "This app uses Face ID to authenticate the user"
+      },
+      "supportsTablet": true,
+      "bundleIdentifier": "edu.trincoll.trinitywallet"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,6 +27,12 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID."
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",

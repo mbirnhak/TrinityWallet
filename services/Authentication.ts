@@ -4,7 +4,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { jwtDecode, JwtPayload } from 'jwt-decode';
-import { generateSalt, hash, verifyAgainstHash } from './crypto';
+import { generateSalt, shaHash, verifyAgainstShaHash } from './crypto';
 import { storedValueKeys } from './enums';
 
 interface CustomJwtPayload extends JwtPayload {
@@ -135,7 +135,7 @@ class AuthenticationService {
 
                     // if a user is re-registering check their email against the stored one, else store their email
                     if (firstTimeUser !== true) {
-                        const emailMatches = await verifyAgainstHash(storedValueKeys.EMAIL, emailEntered)
+                        const emailMatches = await verifyAgainstShaHash(storedValueKeys.EMAIL, emailEntered)
 
                         if (emailMatches) {
                             await SecureStore.setItemAsync(storedValueKeys.ID_TOKEN, tokenResponse.idToken);
@@ -147,7 +147,7 @@ class AuthenticationService {
                         }
                     } else {
                         await SecureStore.setItemAsync(storedValueKeys.ID_TOKEN, tokenResponse.idToken);
-                        const hashedEmail = await hash(emailEntered, await generateSalt());
+                        const hashedEmail = await shaHash(emailEntered, await generateSalt());
                         if (!hashedEmail) {
                             console.error('Failed to hash the email, aborting registration.');
                             return false; // Abort the process if hashing fails
@@ -178,10 +178,9 @@ class AuthenticationService {
     private async biometricAvailability(): Promise<boolean> {
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-        const userConsent = await SecureStore.getItemAsync(storedValueKeys.BIOMETRIC_REGISTERED);
 
-        if (!hasHardware || !isEnrolled || !userConsent) {
-            console.error('Biometrics not enrolled, available, or user has not consented');
+        if (!hasHardware || !isEnrolled) {
+            console.error('Biometrics not enrolled or available');
             return false;
         }
 
@@ -203,7 +202,7 @@ class AuthenticationService {
                 promptMessage: 'Verify your identity',
                 fallbackLabel: 'Use PIN instead',
                 // handle fallback using app PIN rather than device passcode
-                disableDeviceFallback: true,
+                // disableDeviceFallback: true,
             });
 
             if (result.success) {
