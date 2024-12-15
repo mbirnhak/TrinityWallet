@@ -1,4 +1,4 @@
-import { StyleSheet, TouchableOpacity, Alert, AppState } from 'react-native';
+import { StyleSheet, TouchableOpacity, Alert, Text, AppState } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import React, { useState, useEffect } from 'react';
@@ -11,14 +11,14 @@ import { biometricAvailability } from '@/services/Authentication';
 export default function PinLogin() {
     const { signIn, unRegister, authState } = useAuth()
     const [pin, setPin] = useState('');
-    const [useBiometrics, setuseBiometrics] = useState(false);
+    const [useBiometrics, setUseBiometrics] = useState(false);
     const [attempts, setAttempts] = useState(0);
     const MAX_ATTEMPTS = 5;
 
     useEffect(() => {
         const checkForcePin = async () => {
             try {
-                setuseBiometrics(!authState.forcePin);
+                setUseBiometrics(!authState.forcePin);
             } catch (error) {
                 console.error('Error checking biometric availability:', error);
             }
@@ -118,12 +118,19 @@ export default function PinLogin() {
             </ThemedText>
 
             {useBiometrics ? (
-                <TouchableOpacity
-                    style={styles.biometricButton}
-                    onPress={handleBiometricAuth}
-                >
-                    <Ionicons name="lock-open-outline" size={65} color="#007AFF" />
-                </TouchableOpacity>
+                <>
+                    <TouchableOpacity
+                        style={styles.biometricButton}
+                        onPress={handleBiometricAuth}
+                    >
+                        <Ionicons name="lock-open-outline" size={65} color="#007AFF" />
+                    </TouchableOpacity>
+                    <Text
+                        onPress={() => setUseBiometrics(false)}
+                        style={styles.switchText}>
+                        Use PIN
+                    </Text>
+                </>
             ) : (
                 <>
                     <ThemedView style={styles.pinDisplay}>
@@ -220,4 +227,11 @@ const styles = StyleSheet.create({
         fontSize: 24,
         color: '#00000'
     },
+    switchText: {
+        marginTop: 10,
+        color: '#007AFF',
+        textDecorationLine: 'underline',
+        fontSize: 16,
+        textAlign: 'center',
+    },    
 });
