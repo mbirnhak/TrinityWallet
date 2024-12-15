@@ -4,14 +4,15 @@ import { useAuth } from '@/context/AuthContext';
 import { router } from 'expo-router';
 
 export default function Home() {
-  const { oidcRegister } = useAuth();
+  const { signOut } = useAuth();
+  const logOut = async () => {
+    await signOut();
+  };
+
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <Text
-        onPress={() => {
-          // signOut();
-          router.replace('/openId');
-        }}>
+        onPress={logOut}>
         Sign Out
       </Text>
     </View>

@@ -6,9 +6,9 @@ interface AuthProps {
     authState: AuthState;
     pinSetup: () => Promise<void>;
     biometricSetup: () => Promise<void>;
-    signIn: (forcePin: boolean) => Promise<boolean>;
-    signOut: () => void;
-    unRegister: () => void;
+    signIn: (pin: string | null) => Promise<boolean>;
+    signOut: () => Promise<void>;
+    unRegister: () => Promise<void>;
     oidcRegister: (firstTimeUser: boolean) => Promise<boolean>;
     setForcePin: (forcePin: boolean) => Promise<void>;
     hasEmailHash: () => Promise<boolean | null>;
@@ -31,9 +31,9 @@ const AuthContext = createContext<AuthProps>({
     authState: initialAuthState,
     pinSetup: async () => { },
     biometricSetup: async () => { },
-    signIn: async (forcePin: boolean) => false,
-    signOut: () => { },
-    unRegister: () => { },
+    signIn: async (pin: string | null) => false,
+    signOut: async () => { },
+    unRegister: async () => { },
     oidcRegister: async (firstTimeUser: boolean) => false,
     setForcePin: async (forcePin: boolean) => { },
     hasEmailHash: async () => false,
@@ -78,10 +78,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
      * @param forcePin 
      * @returns 
      */
-    const signIn = async (forcePin: boolean) => {
+    const signIn = async (pin: string | null) => {
         setIsLoading(true);
         try {
-            const success = await auth.authenticate(forcePin);
+            const success = await auth.authenticate(pin);
             setAuthState({
                 ...authState,
                 isAuthenticated: success,
@@ -147,6 +147,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
             setAuthState({
                 ...authState,
                 oidcRegistered: false,
+                idToken: null,
             });
             console.log(authState);
         } catch (error) {

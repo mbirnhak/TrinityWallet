@@ -1,27 +1,38 @@
-import { Text } from 'react-native';
-import { Redirect, Stack } from 'expo-router';
+import { Redirect, Stack, useRouter } from "expo-router";
+import { useAuth } from "@/context/AuthContext";
+import { useEffect } from "react";
 
-import { useAuth } from '@/context/AuthContext';
-import { useState } from 'react';
-import { isLoaded } from 'expo-font';
+export default function ProtectedLayout() {
+  const { authState, isLoading } = useAuth();
+  const router = useRouter();
 
-export default function AppLayout() {
-  // const { session, isLoading } = useAuth2();
-  const [isLoading, setIsLoading] = useState(false)
-
-  // You can keep the splash screen open, or render a loading screen like we do here.
   if (isLoading) {
-    return <Text>Loading...</Text>;
+    return (
+      < div style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <p>Loading...</p>
+      </div >
+    );
   }
 
-  // Only require authentication within the (app) group's layout as users
-  // need to be able to access the (auth) group and sign in again.
-  // if (!session) {
-  //   // On web, static rendering will stop here as the user is not authenticated
-  //   // in the headless Node process that the pages are rendered in.
-  //   return <Redirect href="/sign-in" />;
-  // }
+  // useEffect(() => {
+  //   if (!isLoading && (!authState.isAuthenticated || !authState.oidcRegistered)) {
+  //     router.replace('/login');
+  //   }
+  // }, [authState, isLoading]);
 
-  // This layout can be deferred because it's not the root layout.
-  return <Stack />;
+  if (!authState.isAuthenticated || !authState.oidcRegistered) {
+    console.log('Redirecting...')
+    return <Redirect href="/login" />;
+  }
+
+  return (
+    <Stack screenOptions={{ headerShown: true }}>
+      <Stack.Screen
+        name="home"
+        options={{
+          title: "Home"
+        }}
+      />
+    </Stack>
+  );
 }

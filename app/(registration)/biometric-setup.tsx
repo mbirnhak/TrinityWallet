@@ -24,7 +24,7 @@ export default function BiometricSetup() {
     }, []);
 
     const handleEnableBiometrics = async () => {
-        const success = await signIn(false);
+        const success = await signIn(null);
         if (success) {
             await biometricSetup();
             router.replace('/home');

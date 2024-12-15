@@ -11,16 +11,12 @@ interface CustomJwtPayload extends JwtPayload {
     email?: string;
 }
 
-const OPENID_CONFIG = {
-    issuer: 'https://login.microsoftonline.com/4ba15b4b-7d11-4be1-a2fb-df28939a3e0c/v2.0',
-    clientId: 'a4bde670-76fa-4bcf-8592-3c378e086e23',
-    redirectUrl: 'trinwallet://auth/',
-    scopes: ['openid', 'email'],
-    additionalParameters: {
-        prompt: 'login'
-    },
-    usePKCE: true
-};
+interface BiometricCheckResult {
+    isAvailable: boolean;
+    hasHardware: boolean;
+    isEnrolled: boolean;
+    shouldConfigureSettings: boolean;
+}
 
 export interface AuthState {
     isAuthenticated: boolean;
@@ -32,6 +28,45 @@ export interface AuthState {
     pinRegistered: boolean;
     biometricsRegistered: boolean;
     forcePin: boolean;
+}
+
+const OPENID_CONFIG = {
+    issuer: 'https://login.microsoftonline.com/4ba15b4b-7d11-4be1-a2fb-df28939a3e0c/v2.0',
+    clientId: 'a4bde670-76fa-4bcf-8592-3c378e086e23',
+    redirectUrl: 'trinwallet://auth/',
+    scopes: ['openid', 'email'],
+    additionalParameters: {
+        prompt: 'login'
+    },
+    usePKCE: true
+};
+
+/**
+     * Checks availability to use biometrics.
+     * 
+     * @returns true if biomeitrc are enrolled, available, and user has consented to use them, 
+     * otherwise it returns false.
+     */
+export async function biometricAvailability(): Promise<BiometricCheckResult> {
+    try {
+        const hasHardware = await LocalAuthentication.hasHardwareAsync();
+        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+        return {
+            isAvailable: hasHardware && isEnrolled,
+            hasHardware,
+            isEnrolled,
+            shouldConfigureSettings: !hasHardware || !isEnrolled
+        };
+    } catch (error) {
+        console.error('Error checking biometric availability:', error);
+        return {
+            isAvailable: false,
+            hasHardware: false,
+            isEnrolled: false,
+            shouldConfigureSettings: true
+        };
+    }
 }
 
 class AuthenticationService {
@@ -170,24 +205,6 @@ class AuthenticationService {
     }
 
     /**
-     * Checks availability to use biometrics.
-     * 
-     * @returns true if biomeitrc are enrolled, available, and user has consented to use them, 
-     * otherwise it returns false.
-     */
-    private async biometricAvailability(): Promise<boolean> {
-        const hasHardware = await LocalAuthentication.hasHardwareAsync();
-        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-
-        if (!hasHardware || !isEnrolled) {
-            console.error('Biometrics not enrolled or available');
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
      * Authenticates the user using biometrics.
      * 
      * @returns True if successful, false if biometrics are not available,
@@ -195,9 +212,6 @@ class AuthenticationService {
      */
     private async authenticateWithBiometrics(): Promise<boolean> {
         try {
-            const biometricsAvail = await this.biometricAvailability();
-            if (!biometricsAvail) { return false; }
-
             const result = await LocalAuthentication.authenticateAsync({
                 promptMessage: 'Verify your identity',
                 fallbackLabel: 'Use PIN instead',
@@ -219,13 +233,13 @@ class AuthenticationService {
     /**
      * Authenticate the user with either PIN or Biometrics
      * 
-     * @param forcePIN Forces the user to sign in using PIN if set True, else it uses Biometrics for login
-     * @returns True if the user is successfully authenticated, false if unsuccessful or if PIN is required
+     * @param pin If a value is provided the function attempts to authenticate using pin, otherwise it uses biometrics
+     * @returns True if the user is successfully authenticated, false if unsuccessful
      */
-    async authenticate(forcePIN: boolean = false): Promise<boolean> {
+    async authenticate(pin: string | null): Promise<boolean> {
         try {
-            // Regular authentication flow
-            if (!forcePIN) {
+            // Authenticates with biometrics if no pin provided
+            if (!pin) {
                 const biometricSuccess = await this.authenticateWithBiometrics();
                 if (biometricSuccess) {
                     this.authState.isAuthenticated = true;
@@ -233,7 +247,8 @@ class AuthenticationService {
                 }
             }
             // PIN is required or biometric failed
-            return false; // Let the UI handle PIN input
+            const pinMatches = await verifyAgainstShaHash(storedValueKeys.PIN, pin)
+            return pinMatches;
         } catch (error) {
             this.authState.error = error instanceof Error ? error.message : 'Authentication failed';
             return false;
@@ -244,7 +259,7 @@ class AuthenticationService {
     async logout(): Promise<void> {
         this.authState = {
             isAuthenticated: false,
-            idToken: null,
+            idToken: this.authState.idToken,
             wte: null,
             wia: null,
             error: null,
@@ -254,7 +269,7 @@ class AuthenticationService {
             forcePin: this.authState.forcePin,
         };
     }
-    
+
     // Logout and rest Authenticate with OpenIDC (need to re-auth with OpenIDC and confirm PIN)
     async deAuthorize(): Promise<void> {
         await SecureStore.deleteItemAsync('idToken');

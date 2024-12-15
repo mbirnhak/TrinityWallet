@@ -8,6 +8,8 @@ function StackLayout() {
       <Stack.Screen name='(registration)/openId' options={{ headerShown: false }} />
       <Stack.Screen name='(registration)/pin-setup' options={{ headerShown: false }} />
       <Stack.Screen name='(registration)/biometric-setup' options={{ headerShown: false }} />
+      <Stack.Screen name='login' options={{ headerShown: false }} />
+      <Stack.Screen name='(app)' options={{ headerShown: false }} />
     </Stack>
   );
 }
