@@ -1,4 +1,4 @@
-import { StyleSheet, TouchableOpacity, Alert, Text, AppState } from 'react-native';
+import { StyleSheet, TouchableOpacity, Alert, Text } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import React, { useState, useEffect } from 'react';
@@ -15,6 +15,10 @@ export default function PinLogin() {
     const [attempts, setAttempts] = useState(0);
     const MAX_ATTEMPTS = 5;
 
+    /**
+    * useEffect hook to check whether biometric authentication should be used
+    * and sets the appropriate state based on the `forcePin` value.
+    */
     useEffect(() => {
         const checkForcePin = async () => {
             try {
@@ -28,6 +32,12 @@ export default function PinLogin() {
     }, [authState]);
 
 
+
+    /**
+     * Handles biometric authentication by checking biometric availability
+     * and signing in the user if available. If not, it prompts the user to 
+     * enable biometrics in the device settings.
+     */
     const handleBiometricAuth = async () => {
         const biometricStatus = await biometricAvailability();
 
@@ -55,6 +65,12 @@ export default function PinLogin() {
         }
     }
 
+    /**
+     * Handles the input of numbers for the PIN. Adds the number to the current PIN
+     * if the length is less than 6, and validates the PIN once it reaches 6 digits.
+     * 
+     * @param number The number input by the user for the PIN.
+     */
     const handlePinInput = (number: string) => {
         if (pin.length < 6) {
             const newPin = pin + number;
@@ -65,12 +81,22 @@ export default function PinLogin() {
         }
     };
 
+    /**
+     * Deletes the last character from the PIN if the PIN has any digits.
+     */
     const handleDelete = () => {
         if (pin.length > 0) {
             setPin(pin.slice(0, -1));
         }
     };
 
+    /**
+     * Validates the entered PIN by calling the signIn function.
+     * If valid, navigates to the home page; otherwise, it increments the failed
+     * attempts and alerts the user with the remaining attempts.
+     * 
+     * @param inputPin The PIN entered by the user.
+     */
     const validatePin = async (inputPin: string) => {
         try {
             const isValid = await signIn(inputPin);
@@ -97,6 +123,10 @@ export default function PinLogin() {
         }
     };
 
+    /**
+     * Handles the scenario when the maximum number of failed attempts is reached.
+     * It unregisters the user and prompts them to authenticate with Microsoft again.
+     */
     const handleMaxAttemptsReached = async () => {
         await unRegister();
         Alert.alert(
@@ -225,7 +255,7 @@ const styles = StyleSheet.create({
     },
     keypadButtonText: {
         fontSize: 24,
-        color: '#00000'
+        color: '#00000',
     },
     switchText: {
         marginTop: 10,
@@ -233,5 +263,5 @@ const styles = StyleSheet.create({
         textDecorationLine: 'underline',
         fontSize: 16,
         textAlign: 'center',
-    },    
+    },
 });

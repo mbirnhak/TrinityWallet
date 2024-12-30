@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
 export async function clearSecureStore() {
-    const keys = ['authState', 'walletPIN', 'hashedEmail', 'idToken', 'oidcRegistered', 'pinRegistered', 'biometricsRegistered']; // Replace with your actual keys
+    const keys = ['authState', 'walletPIN', 'hashedEmail', 'idToken']; // Replace with your actual keys
     try {
         for (const key of keys) {
             await SecureStore.deleteItemAsync(key);

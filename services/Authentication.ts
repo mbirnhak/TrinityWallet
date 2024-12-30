@@ -4,7 +4,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { jwtDecode, JwtPayload } from 'jwt-decode';
-import { generateSalt, shaHash, verifyAgainstShaHash } from './crypto';
+import { bcryptVerifyHash, generateSalt, shaHash, verifyAgainstShaHash } from './crypto';
 import { storedValueKeys } from './enums';
 
 interface CustomJwtPayload extends JwtPayload {
@@ -216,7 +216,7 @@ class AuthenticationService {
                 promptMessage: 'Verify your identity',
                 fallbackLabel: 'Use PIN instead',
                 // handle fallback using app PIN rather than device passcode
-                // disableDeviceFallback: true,
+                disableDeviceFallback: true,
             });
 
             if (result.success) {
@@ -244,11 +244,17 @@ class AuthenticationService {
                 if (biometricSuccess) {
                     this.authState.isAuthenticated = true;
                     return true;
+                } else {
+                    this.authState.isAuthenticated = false;
+                    return false;
                 }
+            } else {
+                // check PIN against stored hash
+                const storedHash = await SecureStore.getItemAsync(storedValueKeys.PIN);
+                if (!storedHash) return false;
+                const pinMatches = await bcryptVerifyHash(pin, storedHash);
+                return pinMatches;
             }
-            // PIN is required or biometric failed
-            const pinMatches = await verifyAgainstShaHash(storedValueKeys.PIN, pin)
-            return pinMatches;
         } catch (error) {
             this.authState.error = error instanceof Error ? error.message : 'Authentication failed';
             return false;

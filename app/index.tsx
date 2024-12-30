@@ -19,6 +19,7 @@ export default function Index() {
                 const oidcRegistered = authState?.oidcRegistered;
                 const pinRegistered = authState?.pinRegistered;
                 const biometricsRegistered = authState?.biometricsRegistered;
+                console.log("AuthState: ", authState);
                 if (oidcRegistered && pinRegistered && biometricsRegistered) {
                     router.replace('/login');
                 } else {

@@ -1,5 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
+// import bcrypt from 'bcryptjs'
+var bcrypt = require('bcryptjs');
 
 export async function generateSalt() {
     const randomBytes = await Crypto.getRandomBytesAsync(16);
@@ -53,8 +55,53 @@ export async function verifyAgainstShaHash(key: string, value: string | null): P
     }
 }
 
-export default {
-    generateSalt,
-    shaHash,
-    verifyAgainstShaHash
+function fallback(bytesAmount: number) {
+    const typedArray = new Uint8Array(bytesAmount);
+    Crypto.getRandomValues(typedArray);
+    return Array.from(typedArray);
 };
+
+/**
+ * Hashes a given value using bcrypt with a defined number of salt rounds.
+ *
+ * @param value The plain text value to be hashed.
+ * @returns A Promise that resolves to the hashed value as a string or `null` if an error occurs.
+ */
+export async function bcryptHash(value: string): Promise<string | null> {
+    // Define the random fallback using Expo Crypto API (since Node Crypto and Web Crypto API are not available)
+    bcrypt.setRandomFallback(fallback);
+    
+    try {
+        const saltRounds = 15;
+        const salt = await bcrypt.genSalt(saltRounds);
+        const hashedVal = await bcrypt.hash(value, salt);
+        console.log("Hash val: ", hashedVal);
+        return hashedVal;
+    } catch (error) {
+        console.error("Error hashing value: ", error);
+        return null;
+    }
+}
+
+/**
+ * Verifies if a plain text value matches a previously stored bcrypt hash.
+ *
+ * @param value The plain text value to verify.
+ * @param storedHash The bcrypt hash to compare against.
+ * @returns A Promise that resolves to `true` if the value matches the hash, otherwise `false`.
+ */
+export async function bcryptVerifyHash(value: string, storedHash: string): Promise<boolean> {
+    try {
+        const result = await bcrypt.compare(value, storedHash);
+        console.log("Result: ", result)
+        if (result) {
+            console.log('PIN matches!');
+        } else {
+            console.log('PIN does NOT match!');
+        }
+        return result;
+    } catch (error) {
+        console.error('Error verifying PIN:', error);
+        return false;
+    }
+}
