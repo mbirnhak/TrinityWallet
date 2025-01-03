@@ -11,7 +11,8 @@
     "test": "jest --watchAll",
     "lint": "expo lint",
     "local": "npx expo run:ios --device",
-    "local-no-cache": "npx expo run:ios --no-build-cache --device"
+    "local-no-cache": "npx expo run:ios --no-build-cache --device",
+    "postinstall": "patch-package"
   },
   "jest": {
     "preset": "jest-expo"
@@ -20,12 +21,14 @@
     "@expo/vector-icons": "^14.0.2",
     "@react-navigation/bottom-tabs": "^7.0.0",
     "@react-navigation/native": "^7.0.0",
+    "bcrypt-react-native": "^1.1.1",
     "bcryptjs": "^2.4.3",
     "buffer": "^6.0.3",
     "expo": "~52.0.17",
     "expo-auth-session": "^6.0.1",
     "expo-blur": "~14.0.1",
     "expo-constants": "~17.0.3",
+    "expo-crypto": "~14.0.1",
     "expo-dev-client": "~5.0.6",
     "expo-font": "~13.0.1",
     "expo-haptics": "~14.0.0",
@@ -39,6 +42,7 @@
     "expo-system-ui": "~4.0.5",
     "expo-web-browser": "~14.0.1",
     "jwt-decode": "^4.0.0",
+    "patch-package": "^8.0.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-native": "0.76.5",
@@ -47,6 +51,7 @@
     "react-native-reanimated": "~3.16.1",
     "react-native-safe-area-context": "4.12.0",
     "react-native-screens": "~4.1.0",
+    "react-native-simple-bcrypt": "^0.3.0",
     "react-native-vector-icons": "^10.2.0",
     "react-native-web": "~0.19.13",
     "react-native-webview": "13.12.5"
@@ -57,6 +62,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^29.5.14",
     "@types/react": "~18.3.12",
+    "@types/react-native-bcrypt": "^2.4.6",
     "@types/react-native-vector-icons": "^6.4.18",
     "@types/react-test-renderer": "^18.3.0",
     "jest": "^29.7.0",

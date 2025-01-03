@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
-// import bcrypt from 'bcryptjs'
-var bcrypt = require('bcryptjs');
+import bcrypt from 'bcryptjs'
+// var bcrypt = require('bcryptjs');
 
 export async function generateSalt() {
     const randomBytes = await Crypto.getRandomBytesAsync(16);
@@ -60,6 +60,8 @@ function fallback(bytesAmount: number) {
     Crypto.getRandomValues(typedArray);
     return Array.from(typedArray);
 };
+// Define the random fallback using Expo Crypto API (since Node Crypto and Web Crypto API are not available)
+bcrypt.setRandomFallback(fallback);
 
 /**
  * Hashes a given value using bcrypt with a defined number of salt rounds.
@@ -67,13 +69,11 @@ function fallback(bytesAmount: number) {
  * @param value The plain text value to be hashed.
  * @returns A Promise that resolves to the hashed value as a string or `null` if an error occurs.
  */
-export async function bcryptHash(value: string): Promise<string | null> {
-    // Define the random fallback using Expo Crypto API (since Node Crypto and Web Crypto API are not available)
-    bcrypt.setRandomFallback(fallback);
-    
+export async function bcryptHash(value: string): Promise<string | null> {    
     try {
-        const saltRounds = 15;
+        const saltRounds = 1;
         const salt = await bcrypt.genSalt(saltRounds);
+        console.log("Crypto salt: ", salt);
         const hashedVal = await bcrypt.hash(value, salt);
         console.log("Hash val: ", hashedVal);
         return hashedVal;

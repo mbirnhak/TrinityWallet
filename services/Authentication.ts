@@ -216,7 +216,7 @@ class AuthenticationService {
                 promptMessage: 'Verify your identity',
                 fallbackLabel: 'Use PIN instead',
                 // handle fallback using app PIN rather than device passcode
-                disableDeviceFallback: true,
+                // disableDeviceFallback: true,
             });
 
             if (result.success) {

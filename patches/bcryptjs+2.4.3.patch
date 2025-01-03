@@ -1,0 +1,13 @@
+diff --git a/node_modules/bcryptjs/dist/bcrypt.js b/node_modules/bcryptjs/dist/bcrypt.js
+index 1b0a648..4eb711f 100644
+--- a/node_modules/bcryptjs/dist/bcrypt.js
++++ b/node_modules/bcryptjs/dist/bcrypt.js
+@@ -122,7 +122,7 @@
+             salt.push("0");
+         salt.push(rounds.toString());
+         salt.push('$');
+-        salt.push(base64_encode(random(BCRYPT_SALT_LEN), BCRYPT_SALT_LEN)); // May throw
++        salt.push(base64_encode(randomFallback(BCRYPT_SALT_LEN), BCRYPT_SALT_LEN)); // May throw
+         return salt.join('');
+     };
+ 
