@@ -1,17 +1,15 @@
-import { StyleSheet, Alert, Text, View, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+import { StyleSheet, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { router } from 'expo-router';
 import { Buffer } from 'buffer';
 import React from 'react';
+import * as Animatable from 'react-native-animatable';
+import { Text, View } from 'react-native';
 
-// Polyfill for Buffer (to handle error its encountering)
 global.Buffer = Buffer;
 
 export default function OpenId() {
     const { authState, oidcRegister, unRegister, hasEmailHash, isLoading } = useAuth();
-    console.log(authState);
 
     const handleRegistration = async () => {
         if (authState.oidcRegistered) {
@@ -22,7 +20,7 @@ export default function OpenId() {
             }
         } else {
             const hasEmail = await hasEmailHash();
-            if (hasEmail === null) { return; } // error retrieving email hash
+            if (hasEmail === null) return;
             const firstTimeUser = !hasEmail;
             const success = await oidcRegister(firstTimeUser);
             if (success) {
@@ -32,55 +30,60 @@ export default function OpenId() {
                     router.replace('/pin-setup')
                 }
             } else {
-                Alert.alert('Error with registration');
-                console.log(success)
+                Alert.alert('Registration Error', 'Please try again.');
             }
         }
     }
 
-    const handleDeRegistration = async () => {
-        unRegister();
-    }
-
     return (
-        <ThemedView style={styles.container}>
-            <ThemedText type="title" style={styles.title}>
+        <Animatable.View 
+            animation="fadeIn" 
+            duration={1000} 
+            style={styles.container}
+        >
+            <Animatable.Text 
+                animation="fadeInDown"
+                delay={500}
+                style={styles.title}
+            >
                 Trinity Wallet
-            </ThemedText>
+            </Animatable.Text>
 
-            <ThemedText type="subtitle" style={styles.subtitle}>
+            <Animatable.Text 
+                animation="fadeInDown"
+                delay={700}
+                style={styles.subtitle}
+            >
                 Secure Digital Identity Wallet
-            </ThemedText>
+            </Animatable.Text>
 
             {isLoading ? (
-                <ActivityIndicator size="large" color="#0000ff" style={styles.loader} />
+                <ActivityIndicator size="large" color="#0078D4" style={styles.loader} />
             ) : (
-                <>
+                <Animatable.View
+                    animation="fadeInUp"
+                    delay={1000}
+                >
                     <TouchableOpacity
-                        style={styles.loginButton}
+                        style={styles.button}
                         onPress={handleRegistration}
                         disabled={isLoading}
                     >
-                        <ThemedText style={styles.loginButtonText}>
+                        <Text style={styles.buttonText}>
                             Register with Microsoft
-                        </ThemedText>
+                        </Text>
                     </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={styles.unregisterButton} // Add a new style for the unregister button if needed
-                        onPress={handleDeRegistration}
-                    >
-                        <ThemedText style={styles.unregisterButtonText}>
-                            UnRegister(Testing)
-                        </ThemedText>
-                    </TouchableOpacity>
-                </>
+                </Animatable.View>
             )}
 
-            <ThemedText type="default" style={styles.securityNote}>
+            <Animatable.Text 
+                animation="fadeIn"
+                delay={1500}
+                style={styles.securityNote}
+            >
                 This wallet uses multi-factor authentication to ensure your digital identity's security
-            </ThemedText>
-        </ThemedView>
+            </Animatable.Text>
+        </Animatable.View>
     );
 }
 
@@ -90,47 +93,50 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
+        backgroundColor: '#ffffff',
     },
     title: {
-        marginBottom: 10,
+        fontFamily: 'Poppins-Bold',
+        fontSize: 32,
+        color: '#0078D4',
+        marginBottom: 15,
         textAlign: 'center',
     },
     subtitle: {
+        fontFamily: 'Poppins-Regular',
+        fontSize: 18,
+        color: '#666',
         marginBottom: 40,
         textAlign: 'center',
     },
     loader: {
-        marginVertical: 20,
+        marginVertical: 30,
     },
-    loginButton: {
-        backgroundColor: '#0078D4', // Microsoft blue
+    button: {
+        backgroundColor: '#0078D4',
         paddingHorizontal: 30,
         paddingVertical: 15,
-        borderRadius: 8,
-        width: '80%',
+        borderRadius: 25,
+        width: 300,
         alignItems: 'center',
-        marginBottom: 20,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
     },
-    loginButtonText: {
+    buttonText: {
+        fontFamily: 'Poppins-Regular',
         color: '#FFFFFF',
         fontSize: 16,
-        fontWeight: '600',
     },
     securityNote: {
+        fontFamily: 'Poppins-Regular',
         textAlign: 'center',
-        marginTop: 20,
+        marginTop: 40,
         paddingHorizontal: 40,
-        opacity: 0.7,
-    },
-    unregisterButton: {
-        marginTop: 10, // Space between the buttons
-        padding: 15,
-        backgroundColor: '#f8d7da', // Light red background
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-    unregisterButtonText: {
-        fontSize: 16,
-        color: '#721c24', // Dark red text
-    },    
+        color: '#666',
+        fontSize: 14,
+        lineHeight: 20,
+    }
 });

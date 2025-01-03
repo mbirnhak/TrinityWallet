@@ -1,12 +1,12 @@
 import { StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { biometricAvailability } from '@/services/Authentication';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
+import * as Animatable from 'react-native-animatable';
+import { Text, View } from 'react-native';
 
 export default function BiometricSetup() {
     const [biometricType, setBiometricType] = useState<'face' | 'fingerprint' | null>(null);
@@ -25,31 +25,22 @@ export default function BiometricSetup() {
         checkBiometricSupport();
     }, []);
 
-    /**
-     * Handles biometric authentication by checking biometric availability
-     * and signing in the user if available. If not, it prompts the user to 
-     * enable biometrics in the device settings.
-     */
     const handleEnableBiometrics = async () => {
         const biometricStatus = await biometricAvailability();
         if (biometricStatus.isAvailable) {
-            // Biometrics are available, proceed with authentication
             const success = await signIn(null);
             if (success) {
                 await biometricSetup();
                 router.replace('/login');
             }
         } else {
-            // Show alert to guide user to settings
             Alert.alert(
                 'Biometrics Unavailable',
                 'Please enable biometrics in your device settings.',
                 [
                     {
                         text: 'Open Settings',
-                        onPress: () => {
-                            Linking.openSettings();
-                        }
+                        onPress: Linking.openSettings
                     },
                     { text: 'Cancel', style: 'cancel' }
                 ]
@@ -58,24 +49,41 @@ export default function BiometricSetup() {
     }
 
     return (
-        <ThemedView style={styles.container}>
-            <ThemedText type="title" style={styles.title}>
-                Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
-            </ThemedText>
-
-            <ThemedText type="subtitle" style={styles.subtitle}>
-                {'Use Biometrics for quick and secure access to your wallet'}
-            </ThemedText>
-
-            <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={handleEnableBiometrics}
+        <Animatable.View 
+            animation="fadeIn" 
+            duration={1000} 
+            style={styles.container}
+        >
+            <Animatable.Text 
+                animation="fadeInDown"
+                delay={500}
+                style={styles.title}
             >
-                <ThemedText style={styles.buttonText}>
-                    Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
-                </ThemedText>
-            </TouchableOpacity>
-        </ThemedView>
+                Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
+            </Animatable.Text>
+
+            <Animatable.Text 
+                animation="fadeInDown"
+                delay={700}
+                style={styles.subtitle}
+            >
+                Use Biometrics for quick and secure access to your wallet
+            </Animatable.Text>
+
+            <Animatable.View
+                animation="fadeInUp"
+                delay={1000}
+            >
+                <TouchableOpacity
+                    style={styles.button}
+                    onPress={handleEnableBiometrics}
+                >
+                    <Text style={styles.buttonText}>
+                        Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
+                    </Text>
+                </TouchableOpacity>
+            </Animatable.View>
+        </Animatable.View>
     );
 }
 
@@ -85,39 +93,40 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
+        backgroundColor: '#ffffff',
     },
     title: {
-        marginBottom: 10,
+        fontFamily: 'Poppins-Bold',
+        fontSize: 28,
+        color: '#0078D4',
+        marginBottom: 15,
         textAlign: 'center',
     },
     subtitle: {
+        fontFamily: 'Poppins-Regular',
+        fontSize: 16,
+        color: '#666',
         marginBottom: 40,
         textAlign: 'center',
         paddingHorizontal: 20,
+        lineHeight: 24,
     },
-    primaryButton: {
+    button: {
         backgroundColor: '#0078D4',
         paddingHorizontal: 30,
         paddingVertical: 15,
-        borderRadius: 8,
-        width: '80%',
+        borderRadius: 25,
+        width: 300,
         alignItems: 'center',
-        marginBottom: 20,
-    },
-    secondaryButton: {
-        paddingHorizontal: 30,
-        paddingVertical: 15,
-        borderRadius: 8,
-        width: '80%',
-        alignItems: 'center',
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
     },
     buttonText: {
+        fontFamily: 'Poppins-Regular',
         color: '#FFFFFF',
         fontSize: 16,
-        fontWeight: '600',
-    },
-    secondaryButtonText: {
-        fontSize: 16,
-        opacity: 0.7,
-    },
+    }
 });
