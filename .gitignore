@@ -43,8 +43,8 @@ web-build/
 expo-env.d.ts
 
 # generate the native folders by npx expo prebuild command
-ios
+ios/
 *.xcarchive
-android
+android/
 
 # @end expo-cli
