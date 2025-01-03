@@ -8,6 +8,7 @@ import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import { biometricAvailability } from '@/services/Authentication';
 
+
 export default function PinLogin() {
     const { signIn, unRegister, authState } = useAuth()
     const [pin, setPin] = useState('');
