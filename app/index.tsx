@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ActivityIndicator, View, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Text, AppState, AppStateStatus } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import * as Animatable from 'react-native-animatable';

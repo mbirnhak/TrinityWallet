@@ -1,8 +1,9 @@
 import { Stack } from 'expo-router';
 import { AuthProvider } from '@/context/AuthContext';
-import { useEffect } from 'react';
 import * as Font from 'expo-font';
-import { View } from 'react-native';
+import { AppState, AppStateStatus, View } from 'react-native';
+import { useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
 
 function StackLayout() {
   useEffect(() => {
@@ -51,9 +52,31 @@ function StackLayout() {
   );
 }
 
+function AppStateListener() {
+  const { signOut } = useAuth();
+
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // Logout when app goes to background or inactive
+        await signOut();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove(); // Clean up the listener
+    };
+  }, [signOut]);
+
+  return null;
+}
+
 export default function Root() {
   return (
     <AuthProvider>
+      <AppStateListener /> {/* Keeps the listener active throughout the app */}
       <StackLayout />
     </AuthProvider>
   );
