@@ -71,11 +71,9 @@ bcrypt.setRandomFallback(fallback);
  */
 export async function bcryptHash(value: string): Promise<string | null> {    
     try {
-        const saltRounds = 1;
+        const saltRounds = 10;
         const salt = await bcrypt.genSalt(saltRounds);
-        console.log("Crypto salt: ", salt);
         const hashedVal = await bcrypt.hash(value, salt);
-        console.log("Hash val: ", hashedVal);
         return hashedVal;
     } catch (error) {
         console.error("Error hashing value: ", error);

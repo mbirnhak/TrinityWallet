@@ -9,7 +9,7 @@ import { Text, View } from 'react-native';
 global.Buffer = Buffer;
 
 export default function OpenId() {
-    const { authState, oidcRegister, unRegister, hasEmailHash, isLoading } = useAuth();
+    const { authState, oidcRegister, hasEmailHash, isLoading } = useAuth();
 
     const handleRegistration = async () => {
         if (authState.oidcRegistered) {
@@ -29,8 +29,6 @@ export default function OpenId() {
                 } else {
                     router.replace('/pin-setup')
                 }
-            } else {
-                Alert.alert('Registration Error', 'Please try again.');
             }
         }
     }

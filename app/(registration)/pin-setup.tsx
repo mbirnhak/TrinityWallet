@@ -189,7 +189,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'center',
-        paddingHorizontal: 30,
     },
     keypadButton: {
         width: BUTTON_SIZE,
@@ -216,8 +215,8 @@ const styles = StyleSheet.create({
         color: '#0078D4',
     },
     deleteButtonText: {
-        fontSize: 22,
-        color: '#666666',
+        fontSize: BUTTON_SIZE,
+        color: '#0078D4',
     },
     securityNote: {
         fontFamily: 'Poppins-Regular',

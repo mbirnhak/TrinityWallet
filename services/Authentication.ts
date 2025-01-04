@@ -51,7 +51,7 @@ export async function biometricAvailability(): Promise<BiometricCheckResult> {
     try {
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-
+        
         return {
             isAvailable: hasHardware && isEnrolled,
             hasHardware,

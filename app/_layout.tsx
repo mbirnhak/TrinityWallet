@@ -23,25 +23,25 @@ function StackLayout() {
       }}
     >
       <Stack.Screen name='index' />
-      <Stack.Screen 
+      <Stack.Screen
         name='(registration)/openId'
         options={{
           animation: 'slide_from_right',
         }}
       />
-      <Stack.Screen 
+      <Stack.Screen
         name='(registration)/pin-setup'
         options={{
           animation: 'slide_from_right',
         }}
       />
-      <Stack.Screen 
+      <Stack.Screen
         name='(registration)/biometric-setup'
         options={{
           animation: 'slide_from_right',
         }}
       />
-      <Stack.Screen 
+      <Stack.Screen
         name='login'
         options={{
           animation: 'fade',
@@ -76,7 +76,7 @@ function AppStateListener() {
 export default function Root() {
   return (
     <AuthProvider>
-      <AppStateListener /> {/* Keeps the listener active throughout the app */}
+      <AppStateListener />
       <StackLayout />
     </AuthProvider>
   );
