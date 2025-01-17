@@ -36,11 +36,13 @@ export async function verifyAgainstShaHash(key: string, value: string | null): P
         console.log('Value enter is null: ', value);
         return false;
     }
-
     try {
         const storedData = await SecureStore.getItemAsync(key);
         if (!storedData) return false;
         const { hash: storedHash, salt: storedSalt } = JSON.parse(storedData);
+        console.log("Stored Data: ", storedData)
+        console.log("Hash: ", storedHash)
+        console.log("Salt: ", storedSalt)
         const inputHashAndSalt = await shaHash(value, storedSalt);
         if (inputHashAndSalt === null) {
             console.error('Issue hashing input value');

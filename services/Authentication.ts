@@ -31,8 +31,8 @@ export interface AuthState {
 }
 
 const OPENID_CONFIG = {
-    issuer: 'https://login.microsoftonline.com/4ba15b4b-7d11-4be1-a2fb-df28939a3e0c/v2.0',
-    clientId: 'a4bde670-76fa-4bcf-8592-3c378e086e23',
+    issuer: 'https://login.microsoftonline.com/a6cda06a-52d9-4672-ae1f-f6f9c9f14e37/v2.0',
+    clientId: '325c7a3b-15c1-4f6c-b0ec-c9c768da0816',
     redirectUrl: 'trinwallet://auth/',
     scopes: ['openid', 'email'],
     additionalParameters: {

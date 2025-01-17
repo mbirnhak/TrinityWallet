@@ -1,4 +1,6 @@
-import { bcryptHash, bcryptVerifyHash } from "@/services/crypto";
+import { bcryptHash, bcryptVerifyHash, generateSalt, shaHash, verifyAgainstShaHash } from "@/services/crypto";
+
+jest.mock('expo-secure-store');
 
 describe('bcryptVerifyHash', () => {
     const actualVal = '123456';

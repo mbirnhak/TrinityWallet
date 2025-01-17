@@ -8,7 +8,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "jest --watchAll",
+    "test": "jest --watchAll=false",
     "lint": "expo lint",
     "local": "npx expo run:ios --device",
     "local-no-cache": "npx expo run:ios --no-build-cache --device",
