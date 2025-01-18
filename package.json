@@ -21,6 +21,8 @@
     "@expo/vector-icons": "^14.0.2",
     "@react-navigation/bottom-tabs": "^7.0.0",
     "@react-navigation/native": "^7.0.0",
+    "axios": "^1.7.9",
+    "base64url": "^3.0.1",
     "bcrypt-react-native": "^1.1.1",
     "bcryptjs": "^2.4.3",
     "buffer": "^6.0.3",
@@ -62,6 +64,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@types/axios": "^0.9.36",
     "@types/bcrypt": "^5.0.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^29.5.14",

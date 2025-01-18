@@ -55,7 +55,14 @@ export default function ProtectedLayout() {
           title: "eIDAS Wallet"
         }}
       />
-    </Stack>
+       <Stack.Screen 
+        name="credentialIssuance"
+        options={{
+        title: "Credential Issuance",
+        animation: "fade",
+        } }
+      />
+    </Stack>    
   );
 }
 
