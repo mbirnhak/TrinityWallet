@@ -1,10 +1,11 @@
+// (app)/home.tsx
+
 import React, { useState } from 'react';
-import { Text, View, TouchableOpacity, StyleSheet, Alert, FlatList } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet, Alert, FlatList, ActivityIndicator } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import * as Animatable from 'react-native-animatable';
 import CredentialIssuanceService from '@/services/CredentialIssuance';
 
-// Define types for issued credentials
 interface IssuedCredential {
   id: string;
   type: string;
@@ -23,13 +24,13 @@ export default function Home() {
     try {
       setIsLoading(true);
 
-      // Prepare payload dynamically if required
+      // Example of requesting a batch of credentials
       const credentialRequestPayload = [
         {
-          format: 'vc+sd-jwt', // Use the updated format
+          format: 'vc+sd-jwt',
           doctype: 'eu.europa.ec.eudi.mdl_jwt_vc_json',
           proof: {
-            proof_type: 'dpop', // Replace with appropriate proof type
+            proof_type: 'dpop',
           },
         },
       ];
@@ -37,10 +38,10 @@ export default function Home() {
       // Request credentials
       const response = await CredentialIssuanceService.requestBatchCredentials(credentialRequestPayload);
 
+      // Adjust parsing if needed based on actual response shape
       const issuedCredentialsList = ((response as { credential_responses: IssuedCredential[] }).credential_responses) || [];
       setIssuedCredentials(issuedCredentialsList);
 
-      // Save the first credential to secure storage for demonstration
       if (issuedCredentialsList.length > 0) {
         await CredentialIssuanceService.saveCredential(issuedCredentialsList[0]);
         Alert.alert('Success', 'Credential saved successfully.');
@@ -76,9 +77,11 @@ export default function Home() {
           style={styles.actionButton}
           disabled={isLoading}
         >
-          <Text style={styles.buttonText}>
-            {isLoading ? 'Fetching...' : 'Issue Credentials'}
-          </Text>
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <Text style={styles.buttonText}>Issue Credentials</Text>
+          )}
         </TouchableOpacity>
 
         <FlatList
@@ -106,6 +109,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
   },
   welcomeText: {
     fontFamily: 'Poppins-Bold',
@@ -121,10 +125,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
     marginBottom: 20,
   },
   signOutButton: {
@@ -135,10 +135,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
   },
   buttonText: {
     fontFamily: 'Poppins-Bold',
@@ -148,7 +144,6 @@ const styles = StyleSheet.create({
   credentialsList: {
     flex: 1,
     width: '100%',
-    paddingHorizontal: 20,
     marginTop: 20,
   },
   credentialItem: {

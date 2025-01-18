@@ -2,18 +2,21 @@ import * as Crypto from 'expo-crypto';
 
 /**
  * Generate a lightweight token for credential issuance proof.
- * This mimics the purpose of a JWT without requiring the jwt library.
+ * This mimics the purpose of a JWT without requiring the full jwt library.
  * 
- * @returns A signed token as a string.
+ * NOTE: Real eIDAS 2.0 or OpenID4VCI solutions typically require a proper JWT with 
+ *       an ES256 (or similar) signature. This is a simplified placeholder.
+ *
+ * @returns A pseudo-signed token as a string.
  */
 async function generateLightweightToken(): Promise<string> {
   try {
     const payload = {
       sub: 'user@example.com', // User identifier
       aud: 'https://issuer.eudiw.dev', // Audience (issuer URL)
-      exp: Math.floor(Date.now() / 1000) + 60 * 10, // Expiration time (10 minutes from now)
-      iat: Math.floor(Date.now() / 1000), // Issued at
-      iss: 'your-client-id', // Issuer (your client ID)
+      exp: Math.floor(Date.now() / 1000) + 60 * 10, // 10 min from now
+      iat: Math.floor(Date.now() / 1000),
+      iss: 'your-client-id', // "Issuer" (your client ID)
       claims: {
         credential_request: {
           format: 'vc+sd-jwt',
@@ -22,18 +25,23 @@ async function generateLightweightToken(): Promise<string> {
       },
     };
 
-    // Serialize payload to a base64 string
-    const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+    // 1. Serialize payload to JSON, then to base64
+    //    (In a real JWT, you'd do base64url encoding. This is a minimal example.)
+    const payloadJson = JSON.stringify(payload);
+    const payloadBase64 = Buffer.from(payloadJson).toString('base64');
 
-    // Generate a signature using HMAC-SHA256
-    const secret = 'your-shared-secret'; // Replace with your secure shared secret
+    // 2. Generate a signature using HMAC-SHA256 (DEMO ONLY)
+    //    In a real environment, you'd want a private key + public key signature 
+    //    or DPoP, not just a shared secret.
+    const secret = 'your-shared-secret'; // Replace with your real shared secret in production
     const signature = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
       `${payloadBase64}.${secret}`
     );
 
-    // Combine payload and signature to form the token
+    // 3. Combine payload and signature to form a "lightweight" token
     const token = `${payloadBase64}.${signature}`;
+
     return token;
   } catch (error) {
     console.error('Error generating lightweight token:', error);

@@ -1,86 +1,103 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
-import bcrypt from 'bcryptjs'
-// var bcrypt = require('bcryptjs');
+import bcrypt from 'bcryptjs';
 
+/**
+ * Generate a random salt (16 random bytes, hex-encoded).
+ */
 export async function generateSalt() {
-    const randomBytes = await Crypto.getRandomBytesAsync(16);
-    return Buffer.from(randomBytes).toString('hex')
-}
-
-// Simplified function for hashing a value with SHA-256
-export async function shaHash(value: string, salt: string) {
-    try {
-        const valueSalt = `${value}:${salt}`;
-        const hash = await Crypto.digestStringAsync(
-            Crypto.CryptoDigestAlgorithm.SHA256,
-            valueSalt
-        );
-        const storedData = JSON.stringify({ hash: hash, salt: salt });
-        return storedData;
-    } catch (error) {
-        console.error('Error hashing your value: ', error);
-        return null;
-    }
+  const randomBytes = await Crypto.getRandomBytesAsync(16);
+  return Buffer.from(randomBytes).toString('hex');
 }
 
 /**
- * Checks whether the value entered matches the hash stored
+ * Hash a value with SHA-256, including a salt.
  * 
- * @param key The string used to store the value in the key store
- * @param value The string that is being checked for correctness
- * @returns True if the value is correct, otherwise false
+ * @param value The plain text string to hash.
+ * @param salt  The salt to append.
+ * @returns A JSON string with { hash, salt }.
  */
-export async function verifyAgainstShaHash(key: string, value: string | null): Promise<boolean> {
-    if (value === null) {
-        console.log('Value enter is null: ', value);
-        return false;
-    }
-
-    try {
-        const storedData = await SecureStore.getItemAsync(key);
-        if (!storedData) return false;
-        const { hash: storedHash, salt: storedSalt } = JSON.parse(storedData);
-        const inputHashAndSalt = await shaHash(value, storedSalt);
-        if (inputHashAndSalt === null) {
-            console.error('Issue hashing input value');
-            return false;
-        } else {
-            const { hash: inputHash } = JSON.parse(inputHashAndSalt);
-            return storedHash === inputHash;
-        }
-    } catch (error) {
-        console.error('Hash Verification Error:', error);
-        return false;
-    }
+export async function shaHash(value: string, salt: string) {
+  try {
+    const valueSalt = `${value}:${salt}`;
+    const hash = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      valueSalt
+    );
+    const storedData = JSON.stringify({ hash, salt });
+    return storedData;
+  } catch (error) {
+    console.error('Error hashing your value:', error);
+    return null;
+  }
 }
 
+/**
+ * Check whether the provided `value` matches the hash stored in SecureStore under `key`.
+ * 
+ * @param key   The SecureStore key where { hash, salt } is stored.
+ * @param value The user-supplied plain text to verify.
+ * @returns True if the hash matches, otherwise false.
+ */
+export async function verifyAgainstShaHash(key: string, value: string | null): Promise<boolean> {
+  if (value === null) {
+    console.log('Value entered is null.');
+    return false;
+  }
+
+  try {
+    const storedData = await SecureStore.getItemAsync(key);
+    if (!storedData) return false;
+
+    const { hash: storedHash, salt: storedSalt } = JSON.parse(storedData);
+    const inputHashAndSalt = await shaHash(value, storedSalt);
+
+    if (!inputHashAndSalt) {
+      console.error('Issue hashing input value');
+      return false;
+    }
+
+    const { hash: inputHash } = JSON.parse(inputHashAndSalt);
+    return storedHash === inputHash;
+  } catch (error) {
+    console.error('Hash Verification Error:', error);
+    return false;
+  }
+}
+
+/**
+ * Bcrypt requires a random fallback on some platforms. 
+ * We define a fallback using expo-crypto's `getRandomValues`.
+ */
 function fallback(bytesAmount: number) {
-    const typedArray = new Uint8Array(bytesAmount);
-    Crypto.getRandomValues(typedArray);
-    return Array.from(typedArray);
-};
-// Define the random fallback using Expo Crypto API (since Node Crypto and Web Crypto API are not available)
+  const typedArray = new Uint8Array(bytesAmount);
+  Crypto.getRandomValues(typedArray);
+  return Array.from(typedArray);
+}
+
+// Let bcrypt know how to generate random bytes in React Native/Expo environment
 bcrypt.setRandomFallback(fallback);
 
 /**
  * Hashes a given value using bcrypt with a defined number of salt rounds.
  *
  * @param value The plain text value to be hashed.
- * @returns A Promise that resolves to the hashed value as a string or `null` if an error occurs.
+ * @returns A hashed value as a string or `null` if an error occurs.
  */
-export async function bcryptHash(value: string): Promise<string | null> {    
-    try {
-        const saltRounds = 1;
-        const salt = await bcrypt.genSalt(saltRounds);
-        console.log("Crypto salt: ", salt);
-        const hashedVal = await bcrypt.hash(value, salt);
-        console.log("Hash val: ", hashedVal);
-        return hashedVal;
-    } catch (error) {
-        console.error("Error hashing value: ", error);
-        return null;
-    }
+export async function bcryptHash(value: string): Promise<string | null> {
+  try {
+    const saltRounds = 1; // Adjust as needed
+    const salt = await bcrypt.genSalt(saltRounds);
+    console.log('Crypto salt:', salt);
+
+    const hashedVal = await bcrypt.hash(value, salt);
+    console.log('Hashed value:', hashedVal);
+
+    return hashedVal;
+  } catch (error) {
+    console.error('Error hashing value:', error);
+    return null;
+  }
 }
 
 /**
@@ -88,20 +105,21 @@ export async function bcryptHash(value: string): Promise<string | null> {
  *
  * @param value The plain text value to verify.
  * @param storedHash The bcrypt hash to compare against.
- * @returns A Promise that resolves to `true` if the value matches the hash, otherwise `false`.
+ * @returns `true` if the value matches the hash, otherwise `false`.
  */
 export async function bcryptVerifyHash(value: string, storedHash: string): Promise<boolean> {
-    try {
-        const result = await bcrypt.compare(value, storedHash);
-        console.log("Result: ", result)
-        if (result) {
-            console.log('PIN matches!');
-        } else {
-            console.log('PIN does NOT match!');
-        }
-        return result;
-    } catch (error) {
-        console.error('Error verifying PIN:', error);
-        return false;
+  try {
+    const result = await bcrypt.compare(value, storedHash);
+    console.log('Bcrypt compare result:', result);
+
+    if (result) {
+      console.log('Value matches the stored hash!');
+    } else {
+      console.log('Value does NOT match the stored hash!');
     }
+    return result;
+  } catch (error) {
+    console.error('Error verifying value with bcrypt:', error);
+    return false;
+  }
 }

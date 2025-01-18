@@ -62,6 +62,15 @@ export default function ProtectedLayout() {
         animation: "fade",
         } }
       />
+      <Stack.Screen
+          name="credential-callback"
+          options={{ title: "Credential Callback" }}
+        />
+        <Stack.Screen
+          name="error"
+          options={{ title: "Error" }}
+        />
+        
     </Stack>    
   );
 }

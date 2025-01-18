@@ -1,3 +1,5 @@
+// (app)/credentialIssuance.tsx
+
 import React, { useState, useEffect } from 'react';
 import { 
   View, 
@@ -40,8 +42,16 @@ export default function CredentialIssuance() {
     const fetchMetadata = async () => {
       try {
         setIsLoading(true);
-        const fetchedMetadata: MetadataItem[] = await CredentialIssuanceService.fetchMetadata();
-        setMetadata(fetchedMetadata || []);
+        const fetchedMetadata = await CredentialIssuanceService.fetchMetadata();
+        
+        // Transform the data if necessary
+        const transformedMetadata: MetadataItem[] = Array.isArray(fetchedMetadata) ? fetchedMetadata.map(item => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+        })) : [];
+        
+        setMetadata(transformedMetadata);
       } catch (error) {
         console.error('Error fetching metadata:', error);
         Alert.alert('Error', 'Failed to fetch metadata. Please try again.');
@@ -49,7 +59,7 @@ export default function CredentialIssuance() {
         setIsLoading(false);
       }
     };
-
+  
     fetchMetadata();
   }, []);
 
@@ -60,26 +70,27 @@ export default function CredentialIssuance() {
     try {
       setIsLoading(true);
 
-      // Payload adjusted to match the API requirements
+      // Example payload for requesting credentials
       const credentialRequestPayload = [
         {
           format: 'vc+sd-jwt',
           doctype: 'eu.europa.ec.eudi.mdl_jwt_vc_json',
           proof: {
-            proof_type: 'dpop', // Example: Replace with 'dpop' or another proof type as required
+            proof_type: 'dpop', // Example: replace with real proof type if needed
           },
         },
       ];
 
+      // Request a batch of credentials
       const response = await CredentialIssuanceService.requestBatchCredentials(
         credentialRequestPayload
       ) as CredentialResponse;
-  
-      // Now TypeScript knows the shape of response
+
+      // TypeScript now knows the shape of response
       const issuedCredentialsList = response.credential_responses || [];
       setIssuedCredentials(issuedCredentialsList);
 
-      // Save the first credential to secure storage for demonstration
+      // For demonstration, save the first credential to secure storage
       if (issuedCredentialsList.length > 0) {
         await CredentialIssuanceService.saveCredential(issuedCredentialsList[0]);
       }
