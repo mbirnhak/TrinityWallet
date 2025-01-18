@@ -6,7 +6,11 @@ import CredentialIssuanceService from '@/services/CredentialIssuance';
 
 export default function CredentialCallbackScreen() {
   const router = useRouter();
-  const { issuerUrl, preAuthorizedCode } = useLocalSearchParams();
+  const { issuerUrl, preAuthorizedCode, userPin } = useLocalSearchParams<{
+    issuerUrl?: string;
+    preAuthorizedCode?: string;
+    userPin?: string;
+  }>();
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,34 +21,45 @@ export default function CredentialCallbackScreen() {
         if (!issuerUrl) {
           throw new Error('Missing issuerUrl from query params.');
         }
+        if (!preAuthorizedCode) {
+          throw new Error('Missing preAuthorizedCode from query params.');
+        }
         
-        // 1. (Optional) fetch metadata if needed
+        // 1. Optionally fetch metadata
         await CredentialIssuanceService.fetchMetadata();
-        
-        // 2. (Optional) exchange preAuthorizedCode for an access token 
-        //    if your issuer supports "pre-authorized_code" flows 
-        //    (In reality, you'd call requestToken with the correct payload)
-        //    For example:
-        /*
-        const tokenResponse = await CredentialIssuanceService.requestToken({
-          grant_type: 'urn:ietf:params:oauth:grant-type:pre-authorized_code',
-          pre_authorized_code: preAuthorizedCode,
-          // user_pin if needed, etc.
-        });
-        */
 
-        // 3. (Optional) request credential(s)
-        /*
+        // 2. Exchange preAuthorizedCode for an access token
+        const accessToken = await CredentialIssuanceService.requestTokenPreAuthorized(
+          preAuthorizedCode.toString(), 
+          userPin?.toString()
+        );
+
+        // 3. Request your credentials. For example, a single credential
+        //    in 'vc+sd-jwt' format or 'mso_mdoc'...
+        const proofJwt = await CredentialIssuanceService.createProofJwt('https://issuer.eudiw.dev');
+
         const credentialPayload = {
           format: 'vc+sd-jwt',
           doctype: 'eu.europa.ec.eudi.mdl_jwt_vc_json',
-          proof: { proof_type: 'dpop' },
+          proof: {
+            proof_type: 'jwt',
+            jwt: proofJwt,
+          },
         };
-        const credential = await CredentialIssuanceService.requestCredential(credentialPayload);
-        await CredentialIssuanceService.saveCredential(credential);
-        */
 
-        // For demonstration, we do an alert and navigate away
+        const credentialResponse = await CredentialIssuanceService.requestCredential(credentialPayload);
+        // credentialResponse might contain { credential, c_nonce, notification_id, ... }
+
+        // 4. Save the credential
+        if (credentialResponse.credential) {
+          await CredentialIssuanceService.saveCredential({
+            id: 'issued_vc_sdjwt',
+            type: 'vc+sd-jwt',
+            issuer: issuerUrl.toString(),
+            raw: credentialResponse.credential,
+          });
+        }
+
         Alert.alert('Success', 'Credential issuance completed via callback!');
         router.replace('/home');
       } catch (err: any) {
@@ -56,7 +71,7 @@ export default function CredentialCallbackScreen() {
     };
 
     initFlow();
-  }, [issuerUrl, preAuthorizedCode]);
+  }, [issuerUrl, preAuthorizedCode, userPin]);
 
   if (isLoading) {
     return (

@@ -1,108 +1,209 @@
+// services/CredentialIssuance.ts
+
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import * as Crypto from 'expo-crypto';
+import { v4 as uuidv4 } from 'uuid';
+
+// Types from your openid4VCI.ts
+import {
+  PreAuthTokenResponse,
+  IssuerMetadata,
+  TokenResponse,
+} from '@/types/OpenID4VCI';
 
 /**
- * Your base URL for the Issuer's environment.
- * In a proper OpenID4VCI scenario, you'd discover endpoints from the .well-known metadata
- * and store them. For now, we keep it simple.
- */
-const BASE_URL = 'https://issuer.eudiw.dev';
-
-/**
- * Fetch the stored access token for authenticated API requests.
+ * Retrieve the Access Token from SecureStore, if any.
  */
 async function getAccessToken(): Promise<string | null> {
   try {
-    const token = await SecureStore.getItemAsync('access_token');
-    return token || null;
+    return (await SecureStore.getItemAsync('access_token')) || null;
   } catch (error) {
     console.error('Error fetching access token:', error);
     return null;
   }
 }
 
-/**
- * Example shape for well-known metadata.
- * Adjust based on actual .well-known/openid-configuration from your Issuer.
- */
-interface WellKnownConfig {
-  issuer: string;
-  authorization_endpoint?: string;
-  token_endpoint?: string;
-  credential_endpoint?: string;
-  batch_credential_endpoint?: string;
-  // ... add any other fields your .well-known might expose
-}
-
-/**
- * Encapsulates the logic for credential issuance.
- */
 const CredentialIssuanceService = {
   /**
-   * Fetch metadata from the Credential Issuer's `.well-known/openid-configuration` endpoint.
-   * Returns an object representing the configuration.
+   * Fetch the Issuer metadata (from .well-known or metadata_config.json).
+   * Return an object with issuer, token_endpoint, credential_endpoint, etc.
    */
-  async fetchMetadata(): Promise<WellKnownConfig> {
+  async fetchMetadata(): Promise<IssuerMetadata | any> {
     try {
-      const response = await axios.get<WellKnownConfig>(
-        `${BASE_URL}/.well-known/openid-configuration`
-      );
-      return response.data;
+      // Option 1: The standard .well-known 
+      const url = 'https://issuer.eudiw.dev/.well-known/openid-configuration';
+      // Option 2: Custom metadata_config.json
+      // const url = 'https://issuer.eudiw.dev/metadata_config.json';
+
+      const response = await axios.get(url);
+      return response.data; // we assume this matches IssuerMetadata shape
     } catch (error) {
-      console.error('Error fetching issuer metadata:', error);
+      console.error('Error fetching metadata:', error);
       throw new Error('Failed to fetch issuer metadata.');
     }
   },
 
   /**
-   * Request an OAuth2 token from the issuer.
-   * 
-   * Example usage: 
-   *   await requestToken({ grant_type: 'client_credentials', client_id: 'XYZ', ... })
-   *
-   * @param payload - The payload for the token request (e.g. grant_type, client_id).
-   * @returns The token response, including access_token, refresh_token, etc.
+   * Exchange a "pre-authorized_code" for an Access Token.
+   * If the server requires a user PIN, pass it in.
    */
-  async requestToken(payload: Record<string, string>) {
+  async requestTokenPreAuthorized(
+    preAuthorizedCode: string,
+    userPin?: string
+  ): Promise<string> {
     try {
-      // Convert the payload to x-www-form-urlencoded format
-      const formParams = new URLSearchParams(payload).toString();
-
-      const response = await axios.post(`${BASE_URL}/token`, formParams, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      const formBody = new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:pre-authorized_code',
+        pre_authorized_code: preAuthorizedCode,
       });
-      return response.data; // e.g. { access_token, token_type, expires_in, ... }
+      if (userPin) {
+        formBody.set('user_pin', userPin);
+      }
+
+      // Typically from metadata, but we can do the direct endpoint
+      // e.g. 'https://issuer.eudiw.dev/token'
+      const tokenEndpoint = 'https://issuer.eudiw.dev/token';
+
+      const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+      const { data } = await axios.post<PreAuthTokenResponse>(
+        tokenEndpoint,
+        formBody.toString(),
+        { headers }
+      );
+
+      if (!data.access_token) {
+        throw new Error('No access_token in pre-authorized token response.');
+      }
+
+      // Save the token locally
+      await SecureStore.setItemAsync('access_token', data.access_token);
+
+      return data.access_token;
     } catch (error) {
-      console.error('Error requesting token:', error);
-      throw new Error('Failed to request token.');
+      console.error('Error requesting pre-authorized token:', error);
+      throw new Error('Failed to request pre-authorized token.');
     }
   },
 
   /**
-   * Request a batch of credentials from the issuer.
-   * 
-   * @param credentials - Array of credential requests, e.g. 
-   *   [{ type: 'mdoc', format: 'sd_jwt', claims: {...} }, ...]
+   * If you do a standard Authorization Code flow, implement it here.
    */
-  async requestBatchCredentials(credentials: Record<string, any>[]) {
-    const accessToken = await getAccessToken();
-    if (!accessToken) {
+  async requestTokenAuthorizationCode(
+    code: string,
+    redirectUri: string,
+    codeVerifier?: string
+  ): Promise<string> {
+    try {
+      const body = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: 'YOUR_CLIENT_ID', // or from your config
+      });
+      if (codeVerifier) {
+        body.set('code_verifier', codeVerifier);
+      }
+
+      const tokenEndpoint = 'https://issuer.eudiw.dev/token';
+      const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+      const { data } = await axios.post<TokenResponse>(
+        tokenEndpoint,
+        body.toString(),
+        { headers }
+      );
+
+      if (!data.access_token) {
+        throw new Error('No access_token in authorization_code response.');
+      }
+
+      // Store token
+      await SecureStore.setItemAsync('access_token', data.access_token);
+      return data.access_token;
+    } catch (error) {
+      console.error('Error requesting token with authorization_code:', error);
+      throw new Error('Failed to request token (authorization_code).');
+    }
+  },
+
+  /**
+   * Creates a JWT-based proof for "proof_type: 'jwt'".
+   * A real eIDAS wallet must do ES256 with an ECDSA private key.
+   * Below is a minimal HMAC-SHA256 approach to produce a "JWT."
+   */
+  async createProofJwt(audience: string): Promise<string> {
+    try {
+      // 1. Header: ES256 in production, but we'll do a placeholder
+      const header = {
+        alg: 'HS256', // or 'ES256' in real usage
+        typ: 'openid4vci-proof+jwt',
+      };
+
+      // 2. Payload: typical fields: { aud, iat, jti, ... }
+      const now = Math.floor(Date.now() / 1000);
+      const payload = {
+        aud: audience,
+        iat: now,
+        jti: uuidv4(),
+      };
+
+      // 3. Encode to base64url
+      function base64url(str: string): string {
+        return Buffer.from(str).toString('base64')
+          .replace(/=/g, '')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_');
+      }
+      const encodedHeader = base64url(JSON.stringify(header));
+      const encodedPayload = base64url(JSON.stringify(payload));
+
+      // 4. In production, sign (header.payload) with ECDSA (ES256).
+      //    For demonstration, we do a naive HMAC with a static secret:
+      const secret = 'REPLACE_WITH_STRONG_SECRET';
+      const toSign = `${encodedHeader}.${encodedPayload}.${secret}`;
+
+      const signature = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        toSign
+      );
+      const encodedSig = base64url(signature);
+
+      // 5. Combine
+      const jwt = `${encodedHeader}.${encodedPayload}.${encodedSig}`;
+      return jwt;
+    } catch (error) {
+      console.error('Error creating JWT proof:', error);
+      throw new Error('Failed to create proof JWT.');
+    }
+  },
+
+  /**
+   * Request a *batch* of credentials (POST /batch_credential).
+   * The payload includes { credential_requests: [ { format, doctype, proof, ... } ] }
+   */
+  async requestBatchCredentials(
+    credentials: Array<Record<string, any>>
+  ): Promise<any> {
+    const token = await getAccessToken();
+    if (!token) {
       throw new Error('Access token is missing. Please authenticate first.');
     }
 
     try {
-      const response = await axios.post(
-        `${BASE_URL}/batch_credential`,
+      // Typically from metadata, but can be directly:
+      const endpoint = 'https://issuer.eudiw.dev/batch_credential';
+
+      const { data } = await axios.post(
+        endpoint,
         { credential_requests: credentials },
         {
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${token}`,
           },
         }
       );
-      // Expecting response.data to be an array or object of issued credentials
-      return response.data;
+      return data; // e.g. { credential_responses: [...], c_nonce, etc. }
     } catch (error) {
       console.error('Error requesting batch credentials:', error);
       throw new Error('Failed to request batch credentials.');
@@ -110,26 +211,30 @@ const CredentialIssuanceService = {
   },
 
   /**
-   * Retrieve a specific credential from the issuer.
+   * Request a single credential from the issuer (POST /credential).
    * 
-   * @param payload - The payload for the credential request.
-   *   e.g. { format: 'w3cvc', doctype: 'eu.europa.ec.eudi.mdl_jwt_vc_json', ... }
+   * Payload example:
+   *  {
+   *    format: 'mso_mdoc' or 'vc+sd-jwt',
+   *    doctype: 'eu.europa.ec.eudi.loyalty.1',
+   *    proof: { proof_type: 'jwt', jwt: '...' },
+   *    claims: { ... }
+   *  }
    */
-  async requestCredential(payload: Record<string, any>) {
-    const accessToken = await getAccessToken();
-    if (!accessToken) {
+  async requestCredential(payload: Record<string, any>): Promise<any> {
+    const token = await getAccessToken();
+    if (!token) {
       throw new Error('Access token is missing. Please authenticate first.');
     }
-
     try {
-      const response = await axios.post(`${BASE_URL}/credential`, payload, {
+      const endpoint = 'https://issuer.eudiw.dev/credential';
+      const { data } = await axios.post(endpoint, payload, {
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${token}`,
         },
       });
-      // Expecting response.data to be the issued credential object
-      return response.data;
+      return data; // e.g. { credential, c_nonce, notification_id, ... }
     } catch (error) {
       console.error('Error requesting credential:', error);
       throw new Error('Failed to request credential.');
@@ -137,14 +242,11 @@ const CredentialIssuanceService = {
   },
 
   /**
-   * Save a credential securely in the device's storage.
-   * 
-   * @param credential - The credential object to save. Usually includes an "id" or unique identifier.
+   * Save a credential in SecureStore.
    */
   async saveCredential(credential: Record<string, any>) {
     try {
-      // Fallback to "default_credential" if no .id is present
-      const credentialId = credential?.id || 'default_credential';
+      const credentialId = credential.id || `credential_${Date.now()}`;
       await SecureStore.setItemAsync(credentialId, JSON.stringify(credential));
       console.log('Credential saved successfully:', credentialId);
     } catch (error) {
@@ -154,15 +256,12 @@ const CredentialIssuanceService = {
   },
 
   /**
-   * Load a credential securely from the device's storage.
-   * 
-   * @param credentialId - The ID of the credential to load.
-   * @returns The credential object, or null if not found.
+   * Load a credential from SecureStore.
    */
   async loadCredential(credentialId: string) {
     try {
-      const credentialStr = await SecureStore.getItemAsync(credentialId);
-      return credentialStr ? JSON.parse(credentialStr) : null;
+      const val = await SecureStore.getItemAsync(credentialId);
+      return val ? JSON.parse(val) : null;
     } catch (error) {
       console.error('Error loading credential:', error);
       throw new Error('Failed to load credential.');
@@ -170,14 +269,12 @@ const CredentialIssuanceService = {
   },
 
   /**
-   * Delete a saved credential from the device's storage.
-   * 
-   * @param credentialId - The ID of the credential to delete.
+   * Delete a credential from SecureStore.
    */
   async deleteCredential(credentialId: string) {
     try {
       await SecureStore.deleteItemAsync(credentialId);
-      console.log('Credential deleted successfully:', credentialId);
+      console.log('Credential deleted:', credentialId);
     } catch (error) {
       console.error('Error deleting credential:', error);
       throw new Error('Failed to delete credential.');
