@@ -4,8 +4,8 @@ import * as AuthSession from 'expo-auth-session';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { jwtDecode, JwtPayload } from 'jwt-decode';
-import { bcryptVerifyHash, generateSalt, shaHash, verifyAgainstShaHash } from './crypto';
-import { storedValueKeys } from './enums';
+import { bcryptVerifyHash, generateSalt, shaHash, verifyAgainstShaHash } from './Utils/crypto';
+import { storedValueKeys } from './Utils/enums';
 
 interface CustomJwtPayload extends JwtPayload {
     email?: string;
