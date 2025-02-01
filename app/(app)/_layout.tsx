@@ -5,10 +5,12 @@ import LottieView from 'lottie-react-native';
 import * as Font from 'expo-font';
 import * as Animatable from 'react-native-animatable';
 import { useEffect } from "react";
+import { useCredentialDeepLinkHandler } from '../../services/credentialIssuance';
 
 export default function ProtectedLayout() {
   const { authState, isLoading } = useAuth();
   const router = useRouter();
+  useCredentialDeepLinkHandler();
 
   useEffect(() => {
     Font.loadAsync({
