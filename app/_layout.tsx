@@ -23,6 +23,7 @@ function StackLayout() {
       }}
     >
       <Stack.Screen name='index' />
+      <Stack.Screen name='callback' />
       <Stack.Screen
         name='(registration)/openId'
         options={{

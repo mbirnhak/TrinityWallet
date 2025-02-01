@@ -10,10 +10,24 @@
     "newArchEnabled": true,
     "ios": {
       "infoPlist": {
-        "NSFaceIDUsageDescription": "This app uses Face ID to authenticate the user"
+        "NSFaceIDUsageDescription": "This app uses Face ID to authenticate the user",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "trinwallet"
+            ],
+            "CFBundleURLName": "edu.trincoll.trinitywallet"
+          }
+        ],
+        "LSApplicationQueriesSchemes": [
+          "trinwallet"
+        ]
       },
       "supportsTablet": true,
-      "bundleIdentifier": "edu.trincoll.trinitywallet"
+      "bundleIdentifier": "edu.trincoll.trinitywallet",
+      "associatedDomains": [
+        "applinks:issuer.eudiw.dev"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +38,37 @@
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"
       ],
-      "package": "edu.trincoll.trinitywallet"
+      "package": "edu.trincoll.trinitywallet",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "issuer.eudiw.dev",
+              "pathPrefix": "/redirect"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "trinwallet",
+              "pathPattern": ".*"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -60,6 +104,13 @@
       "eas": {
         "projectId": "f1f0b7ab-f036-4e26-ad33-1a08ce1a26f2"
       }
+    },
+    "owner": "trinity",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f1f0b7ab-f036-4e26-ad33-1a08ce1a26f2"
     }
   }
 }
