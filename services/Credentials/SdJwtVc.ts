@@ -1,11 +1,15 @@
 import { SDJwtVcInstance, SdJwtVcPayload } from '@sd-jwt/sd-jwt-vc';
 import type { DisclosureFrame, KBOptions, SDJWTCompact } from '@sd-jwt/types';
 import { createSignerVerifier, digest, ES256, generateSalt, } from './utils';
+import { JWK } from 'react-native-quick-crypto/lib/typescript/src/keys';
 
 // Function to create an SDJwt instance and provide utility methods for SDJwt operations
-export const createSdJwt = async () => {
+export const createSdJwt = async (privateKey?: object, publicKey?: object) => {
     // Create a signer and verifier for issuing and verifying SDJwt credentials
-    const { signer, verifier } = await createSignerVerifier();
+    const { signer, verifier } = await createSignerVerifier(
+        (privateKey ? privateKey : undefined),
+        (publicKey ? publicKey : undefined)
+    );
 
     // Initialize the SDJwt instance with the required configuration
     const sdjwt = new SDJwtVcInstance({
@@ -75,45 +79,3 @@ export const createSdJwt = async () => {
         }
     };
 };
-
-
-// Test functions of sdjwt
-// (async () => {
-//     const sdJwt = await createSdJwt();
-
-//     const claims = {
-//         firstname: 'John',
-//         lastname: 'Doe',
-//         ssn: '123-45-6789',
-//         id: '1234',
-//     };
-
-//     const credentialPayload = {
-//         iss: 'Issuer',
-//         iat: new Date().getTime(),
-//         vct: 'ExampleCredentials',
-//         ...claims,
-//     };
-
-//     const disclosureFrame: DisclosureFrame<typeof claims> = {
-//         _sd: ['firstname', 'lastname', 'ssn'],
-//     };
-
-//     // Issue a credential
-//     const credential = await sdJwt.issueCredential(credentialPayload, disclosureFrame);
-//     console.log('Issued Credential:', credential);
-
-//     // Validate the credential
-//     const valid = await sdJwt.validateCredential(credential);
-//     console.log('Validation Result:', valid);
-
-//     // Create a presentation
-//     const presentationFrame = { firstname: true, id: true };
-//     const presentation = await sdJwt.presentCredential(credential, presentationFrame);
-//     console.log('Presentation:', presentation);
-
-//     // Verify the presentation
-//     const requiredClaims = ['firstname', 'id'];
-//     const verified = await sdJwt.verifyPresentation(presentation, requiredClaims);
-//     console.log('Verified:', verified);
-// })();  

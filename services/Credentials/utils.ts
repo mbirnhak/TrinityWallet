@@ -50,74 +50,92 @@ export const ES256 = {
     },
 
     async getSigner(privateKeyJWK: object) {
-        const privateKey = await QuickCrypto.subtle.importKey(
-            'jwk',
-            privateKeyJWK,
-            {
-                name: 'ECDSA',
-                namedCurve: 'P-256', // Must match the curve used to generate the key
-            },
-            true, // whether the key is extractable (i.e., can be used in exportKey)
-            ['sign'],
-        );
-
-        return async (data: string) => {
-            const encoder = new TextEncoder();
-            const signature = await QuickCrypto.subtle.sign(
+        try {
+            const privateKey = await QuickCrypto.subtle.importKey(
+                'jwk',
+                privateKeyJWK,
                 {
                     name: 'ECDSA',
-                    hash: { name: 'sha-256' as HashAlgorithm }, // Required for ES256
+                    namedCurve: 'P-256', // Must match the curve used to generate the key
                 },
-                privateKey,
-                encoder.encode(data),
+                true, // whether the key is extractable (i.e., can be used in exportKey)
+                ['sign'],
             );
-
-            return btoa(String.fromCharCode(...new Uint8Array(signature)))
-                .replace(/\+/g, '-')
-                .replace(/\//g, '_')
-                .replace(/=+$/, ''); // Convert to base64url format
-        };
+    
+            return async (data: string) => {
+                const encoder = new TextEncoder();
+                const signature = await QuickCrypto.subtle.sign(
+                    {
+                        name: 'ECDSA',
+                        hash: { name: 'sha-256' as HashAlgorithm }, // Required for ES256
+                    },
+                    privateKey,
+                    encoder.encode(data),
+                );
+    
+                return btoa(String.fromCharCode(...new Uint8Array(signature)))
+                    .replace(/\+/g, '-')
+                    .replace(/\//g, '_')
+                    .replace(/=+$/, ''); // Convert to base64url format
+            };
+        } catch (error) {
+            console.error("Error: ", error);
+            return;
+        }
     },
 
     async getVerifier(publicKeyJWK: object) {
-        const publicKey = await QuickCrypto.subtle.importKey(
-            'jwk',
-            publicKeyJWK,
-            {
-                name: 'ECDSA',
-                namedCurve: 'P-256', // Must match the curve used to generate the key
-            },
-            true, // whether the key is extractable (i.e., can be used in exportKey)
-            ['verify'],
-        );
-
-        return async (data: string, signatureBase64url: string) => {
-            const encoder = new TextEncoder();
-            const signature = Uint8Array.from(
-                atob(signatureBase64url.replace(/-/g, '+').replace(/_/g, '/')),
-                (c) => c.charCodeAt(0),
-            );
-            const isValid = await QuickCrypto.subtle.verify(
+        try {
+            console.log("Pub key for ver: ", publicKeyJWK)
+            const publicKey = await QuickCrypto.subtle.importKey(
+                'jwk',
+                publicKeyJWK,
                 {
                     name: 'ECDSA',
-                    hash: { name: 'sha-256' as HashAlgorithm }, // Required for ES256
+                    namedCurve: 'P-256', // Must match the curve used to generate the key
                 },
-                publicKey,
-                signature,
-                encoder.encode(data),
+                true, // whether the key is extractable (i.e., can be used in exportKey)
+                ['verify'],
             );
-            return isValid as unknown as boolean;
-        };
+    
+            return async (data: string, signatureBase64url: string) => {
+                const encoder = new TextEncoder();
+                const signature = Uint8Array.from(
+                    atob(signatureBase64url.replace(/-/g, '+').replace(/_/g, '/')),
+                    (c) => c.charCodeAt(0),
+                );
+                const isValid = await QuickCrypto.subtle.verify(
+                    {
+                        name: 'ECDSA',
+                        hash: { name: 'sha-256' as HashAlgorithm }, // Required for ES256
+                    },
+                    publicKey,
+                    signature,
+                    encoder.encode(data),
+                );
+                return isValid as unknown as boolean;
+            };
+        } catch (error) {
+            console.error("Error: ", error);
+            return;
+        }
     },
 };
 
 // Generate a signer and verifier based on either given keys, or newly generated keys
-export const createSignerVerifier = async ( publicKeyInput?: ArrayBuffer | JWK, privateKeyInput?: ArrayBuffer | JWK) => {
-    const { publicKey, privateKey } = publicKeyInput && privateKeyInput ?
-        { publicKey: publicKeyInput, privateKey: privateKeyInput } : 
-        await ES256.generateKeyPair();
-    return {
-        signer: await ES256.getSigner(privateKey),
-        verifier: await ES256.getVerifier(publicKey),
-    };
+export const createSignerVerifier = async (privateKeyInput?: object, publicKeyInput?: object) => {
+    try {
+        const { publicKey, privateKey } = publicKeyInput && privateKeyInput ?
+            { publicKey: publicKeyInput, privateKey: privateKeyInput } : 
+            await ES256.generateKeyPair();
+        console.log("priv: ", privateKey);
+        console.log("pub: ", publicKey);
+        return {
+            signer: await ES256.getSigner(privateKey),
+            verifier: await ES256.getVerifier(publicKey),
+        };
+    } catch (error) {
+        console.log("Error: ", error);
+        return {}
+    }
 };
