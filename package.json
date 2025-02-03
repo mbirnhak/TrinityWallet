@@ -44,6 +44,7 @@
     "expo-symbols": "~0.2.0",
     "expo-system-ui": "~4.0.5",
     "expo-web-browser": "~14.0.1",
+    "jose": "^5.9.6",
     "jwt-decode": "^4.0.0",
     "lottie-react-native": "7.1.0",
     "patch-package": "^8.0.0",

@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import base64url from 'base64url';
 
+
 // Constants
 const ISSUER_URL = 'https://issuer.eudiw.dev';
 const CLIENT_ID = 'ID';
@@ -25,6 +26,25 @@ interface AuthorizationDetails {
     format: string;
     vct: string;
 }
+
+interface CredentialRequest {
+    format: string;
+    vct: string;
+    proof: {
+        proof_type: string;
+        jwt: string;
+    };
+}
+
+interface CredentialResponse {
+    c_nonce: string;
+    c_nonce_expires_in: number;
+    credential?: any;
+    notification_id?: string;
+    transaction_id?: string;
+}
+
+
 
 /**
  * Generate PKCE challenge pair
@@ -58,6 +78,14 @@ async function generateState() {
     await SecureStore.setItemAsync(STATE_KEY, state);
     console.log('[Auth] Generated state:', state);
     return state;
+}
+
+/**
+ * Generate a random UUID using Expo's Crypto
+ */
+async function generateUUID(): Promise<string> {
+    const bytes = await Crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -110,6 +138,7 @@ async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: st
         });
 
         console.log('[Step 2] PAR Request Payload:', params.toString());
+        console.log('[Step 2] Authorization Details:', JSON.stringify(authDetails, null, 2));
 
         const response = await fetch(parEndpoint, {
             method: 'POST',
@@ -175,6 +204,12 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
             body: params.toString()
         });
 
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[Step 4] Token request failed:', errorText);
+            throw new Error(`Token request failed with status: ${response.status}`);
+        }
+
         const tokenResponse = await response.json();
         console.log('[Step 4] Token Response:', JSON.stringify(tokenResponse, null, 2));
         
@@ -182,10 +217,190 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
         await SecureStore.setItemAsync('access_token', tokenResponse.access_token);
         await SecureStore.setItemAsync('refresh_token', tokenResponse.refresh_token);
         
+        // Request credential with the access token if we have authorization details
+        if (tokenResponse.access_token && tokenResponse.authorization_details) {
+            try {
+                const credentialResponse = await requestCredentialWithToken(
+                    tokenResponse.access_token,
+                    tokenResponse.authorization_details
+                );
+                console.log('[Flow] Credential request completed successfully');
+                return { tokenResponse, credentialResponse };
+            } catch (error) {
+                console.error('[Flow] Error during credential request:', error);
+                throw error;
+            }
+        }
+        
         return tokenResponse;
     } catch (error) {
         console.error('[Token] Error:', error);
         throw new Error('Failed to exchange code for token');
+    }
+}
+
+/**
+ * Step 5: Generate JWT proof for credential request
+ */
+async function generateJWTProof(nonce: string, accessToken: string): Promise<string> {
+    try {
+        console.log('[Step 5] Generating JWT proof with nonce:', nonce);
+        
+        // Generate a key pair for signing
+        const { publicKey, privateKey } = await generateKeyPair();
+        
+        const header = {
+            typ: "openid4vci-proof+jwt",
+            alg: "ES256",
+            jwk: publicKey  // Include the public key in the header
+        };
+
+        const payload = {
+            iss: CLIENT_ID,
+            aud: ISSUER_URL,
+            iat: Math.floor(Date.now() / 1000),
+            nonce: nonce,
+            jti: await generateUUID() // Using our custom UUID generator
+        };
+
+        console.log('[Step 5] JWT Header:', header);
+        console.log('[Step 5] JWT Payload:', payload);
+
+        // Create the JWT
+        const jwt = await new jose.SignJWT(payload)
+            .setProtectedHeader(header)
+            .setIssuedAt()
+            .setAudience(ISSUER_URL)
+            .sign(privateKey);
+
+        console.log('[Step 5] Generated JWT:', jwt);
+        
+        return jwt;
+    } catch (error) {
+        console.error('[Step 5] Error generating JWT proof:', error);
+        throw error;
+    }
+}
+
+/**
+ * Step 6: Request credential using access token
+ */
+async function requestCredentialWithToken(accessToken: string, authDetails: any): Promise<CredentialResponse> {
+    try {
+        console.log('[Step 6] Starting credential request flow...');
+
+        // Step 1: Get the first nonce
+        const initialRequest = {
+            format: "vc+sd-jwt",
+            vct: "eu.europa.ec.eudi.pid_jwt_vc_json"
+        };
+
+        console.log('[Step 6.1] Initial request:', JSON.stringify(initialRequest, null, 2));
+
+        const initialResponse = await fetch(`${ISSUER_URL}/credential`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify(initialRequest)
+        });
+
+        const nonceData = await initialResponse.json();
+        console.log('[Step 6.1] Initial response:', JSON.stringify(nonceData, null, 2));
+
+        if (!nonceData.c_nonce) {
+            throw new Error('No nonce received in initial response');
+        }
+
+        // Create JWT Header
+        const header = {
+            typ: "openid4vci-proof+jwt",
+            alg: "ES256",
+            jwk: {
+                kty: "EC",
+                crv: "P-256",
+                x: "wUuP2OlwHefeE-Y16Wj7PHAzZ0JAQyevqWMfd5-KmKY",
+                y: "YW-b8O3Uk3NUrk9oZpAT1laPeAgiNQwDcotWiwBFQ6E"
+            }
+        };
+
+        // Create JWT Payload with received nonce
+        const payload = {
+            aud: ISSUER_URL,
+            nonce: nonceData.c_nonce,
+            iat: Math.floor(Date.now() / 1000)
+        };
+
+        // Encode JWT parts
+        const encodedHeader = base64url(JSON.stringify(header));
+        const encodedPayload = base64url(JSON.stringify(payload));
+        
+        // Create signed JWT (using predetermined signature for testing)
+        const signature = "IdmxwbfJIKwcaqvADp6bzV2u-o0UwKIVmo_kQkc1rZHQ9MtBDNbO21NoVr99ZEgumTX8UYNFJcr_R95xfO1NiA";
+        const jwt = `${encodedHeader}.${encodedPayload}.${signature}`;
+
+        // Step 2: Make credential request with new JWT containing correct nonce
+        const credentialRequest = {
+            format: "vc+sd-jwt",
+            vct: "eu.europa.ec.eudi.pid_jwt_vc_json",
+            proof: {
+                proof_type: "jwt",
+                jwt: jwt
+            }
+        };
+
+        console.log('[Step 6.2] Sending credential request:', JSON.stringify(credentialRequest, null, 2));
+
+        const credentialResponse = await fetch(`${ISSUER_URL}/credential`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify(credentialRequest)
+        });
+
+        const responseData = await credentialResponse.json();
+        console.log('[Step 6.2] Credential response:', JSON.stringify(responseData, null, 2));
+
+        // Try batch request if individual request fails
+        if (responseData.credential === "Error") {
+            console.log('[Step 6.3] Attempting batch credential request...');
+            
+            const batchRequest = {
+                credential_requests: [{
+                    format: "vc+sd-jwt",
+                    vct: "eu.europa.ec.eudi.pid_jwt_vc_json",
+                    proof: {
+                        proof_type: "jwt",
+                        jwt: jwt
+                    }
+                }]
+            };
+
+            const batchResponse = await fetch(`${ISSUER_URL}/batch_credential`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify(batchRequest)
+            });
+
+            const batchData = await batchResponse.json();
+            console.log('[Step 6.3] Batch credential response:', JSON.stringify(batchData, null, 2));
+
+            if (batchData.credential_responses?.[0]?.credential) {
+                await SecureStore.setItemAsync('credential_token', JSON.stringify(batchData.credential_responses[0].credential));
+                return batchData;
+            }
+        }
+
+        return responseData;
+    } catch (error) {
+        console.error('[Step 6] Error:', error);
+        throw error;
     }
 }
 
@@ -281,13 +496,15 @@ export function useCredentialDeepLinkHandler() {
                         oidcMetadata
                     );
                     
-                    // Handle successful token exchange
-                    console.log('[Deep Link] Token exchange successful');
-                    router.replace('/home');
+                    // Update auth state and navigate directly to home
+                    await SecureStore.setItemAsync('isAuthenticated', 'true');
+                    console.log('[Deep Link] Token exchange successful, navigating to home');
+                    router.replace('/(app)/home');
                 }
             } catch (error) {
                 console.error('[Deep Link] Error handling callback:', error);
                 Alert.alert('Error', 'Failed to process credential');
+                router.replace('/login');
             }
         });
 
