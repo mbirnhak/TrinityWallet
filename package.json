@@ -22,6 +22,7 @@
     "@react-navigation/bottom-tabs": "^7.0.0",
     "@react-navigation/native": "^7.0.0",
     "@sd-jwt/sd-jwt-vc": "^0.9.1",
+    "base64url": "^3.0.1",
     "bcrypt-react-native": "^1.1.1",
     "bcryptjs": "^2.4.3",
     "buffer": "^6.0.3",
@@ -36,6 +37,7 @@
     "expo-linear-gradient": "~14.0.1",
     "expo-linking": "~7.0.3",
     "expo-local-authentication": "^15.0.1",
+    "expo-notifications": "^0.29.13",
     "expo-router": "~4.0.11",
     "expo-secure-store": "^14.0.0",
     "expo-splash-screen": "~0.29.15",
@@ -43,6 +45,7 @@
     "expo-symbols": "~0.2.0",
     "expo-system-ui": "~4.0.5",
     "expo-web-browser": "~14.0.1",
+    "jose": "^5.9.6",
     "jwt-decode": "^4.0.0",
     "lottie-react-native": "7.1.0",
     "patch-package": "^8.0.0",
@@ -60,7 +63,8 @@
     "react-native-simple-bcrypt": "^0.3.0",
     "react-native-vector-icons": "^10.2.0",
     "react-native-web": "~0.19.13",
-    "react-native-webview": "13.12.5"
+    "react-native-webview": "13.12.5",
+    "expo-file-system": "~18.0.9"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
