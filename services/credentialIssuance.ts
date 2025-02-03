@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import base64url from 'base64url';
-
+import { CredentialStorage } from './credentialStorage';
 
 // Constants
 const ISSUER_URL = 'https://issuer.eudiw.dev';
@@ -119,11 +119,21 @@ async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: st
         console.log('[Step 2] Initiating Push Authorization Request...');
         
         const state = await generateState();
-        const authDetails: AuthorizationDetails[] = [{
-            type: "openid_credential",
-            format: "vc+sd-jwt",
-            vct: "eu.europa.ec.eudi.pid_jwt_vc_json"
-        }];
+        
+        // Updated to request both credential types
+        const authDetails = [
+            {
+                type: "openid_credential",
+                format: "vc+sd-jwt",
+                vct: "eu.europa.ec.eudi.pid_jwt_vc_json"
+            },
+            {
+                type: "openid_credential",
+                credential_configuration_id: "eu.europa.ec.eudi.pid_mdoc"
+            }
+        ];
+
+        console.log('[Step 2] Authorization Details:', JSON.stringify(authDetails, null, 2));
 
         const parEndpoint = oidcMetadata.pushed_authorization_request_endpoint;
         const params = new URLSearchParams({
@@ -138,7 +148,6 @@ async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: st
         });
 
         console.log('[Step 2] PAR Request Payload:', params.toString());
-        console.log('[Step 2] Authorization Details:', JSON.stringify(authDetails, null, 2));
 
         const response = await fetch(parEndpoint, {
             method: 'POST',
@@ -287,34 +296,12 @@ async function generateJWTProof(nonce: string, accessToken: string): Promise<str
  */
 async function requestCredentialWithToken(accessToken: string, authDetails: any): Promise<CredentialResponse> {
     try {
-        console.log('[Step 6] Starting credential request flow...');
+        console.log('[Step 6] ====== Starting Batch Credential Request Flow ======');
+        console.log('[Step 6] Authorization Details:', JSON.stringify(authDetails, null, 2));
 
-        // Step 1: Get the first nonce
-        const initialRequest = {
-            format: "vc+sd-jwt",
-            vct: "eu.europa.ec.eudi.pid_jwt_vc_json"
-        };
-
-        console.log('[Step 6.1] Initial request:', JSON.stringify(initialRequest, null, 2));
-
-        const initialResponse = await fetch(`${ISSUER_URL}/credential`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
-            },
-            body: JSON.stringify(initialRequest)
-        });
-
-        const nonceData = await initialResponse.json();
-        console.log('[Step 6.1] Initial response:', JSON.stringify(nonceData, null, 2));
-
-        if (!nonceData.c_nonce) {
-            throw new Error('No nonce received in initial response');
-        }
-
-        // Create JWT Header
-        const header = {
+        // Step 6.1: Create Initial JWT proof without nonce
+        console.log('[Step 6.1] Generating initial JWT proof...');
+        const initialHeader = {
             typ: "openid4vci-proof+jwt",
             alg: "ES256",
             jwk: {
@@ -325,81 +312,185 @@ async function requestCredentialWithToken(accessToken: string, authDetails: any)
             }
         };
 
-        // Create JWT Payload with received nonce
-        const payload = {
+        const initialPayload = {
             aud: ISSUER_URL,
-            nonce: nonceData.c_nonce,
-            iat: Math.floor(Date.now() / 1000)
+            iat: Math.floor(Date.now() / 1000),
+            jti: await generateUUID()
         };
 
-        // Encode JWT parts
-        const encodedHeader = base64url(JSON.stringify(header));
-        const encodedPayload = base64url(JSON.stringify(payload));
-        
-        // Create signed JWT (using predetermined signature for testing)
-        const signature = "IdmxwbfJIKwcaqvADp6bzV2u-o0UwKIVmo_kQkc1rZHQ9MtBDNbO21NoVr99ZEgumTX8UYNFJcr_R95xfO1NiA";
-        const jwt = `${encodedHeader}.${encodedPayload}.${signature}`;
+        console.log('[Step 6.1] Initial JWT components:', {
+            header: JSON.stringify(initialHeader),
+            payload: JSON.stringify(initialPayload)
+        });
 
-        // Step 2: Make credential request with new JWT containing correct nonce
-        const credentialRequest = {
-            format: "vc+sd-jwt",
-            vct: "eu.europa.ec.eudi.pid_jwt_vc_json",
-            proof: {
-                proof_type: "jwt",
-                jwt: jwt
-            }
+        const initialEncodedHeader = base64url(JSON.stringify(initialHeader));
+        const initialEncodedPayload = base64url(JSON.stringify(initialPayload));
+        const initialSignature = "IdmxwbfJIKwcaqvADp6bzV2u-o0UwKIVmo_kQkc1rZHQ9MtBDNbO21NoVr99ZEgumTX8UYNFJcr_R95xfO1NiA";
+        const initialJwt = `${initialEncodedHeader}.${initialEncodedPayload}.${initialSignature}`;
+
+        // Step 6.2: Initial batch request with proof
+        const initialBatchRequest = {
+            credential_requests: [
+                {
+                    credential_identifier: "eu.europa.ec.eudi.pid_jwt_vc_json",
+                    format: "vc+sd-jwt",
+                    proof: {
+                        proof_type: "jwt",
+                        jwt: initialJwt
+                    }
+                },
+                {
+                    credential_identifier: "eu.europa.ec.eudi.pid_mdoc",
+                    proof: {
+                        proof_type: "jwt",
+                        jwt: initialJwt
+                    }
+                }
+            ]
         };
 
-        console.log('[Step 6.2] Sending credential request:', JSON.stringify(credentialRequest, null, 2));
+        console.log('[Step 6.2] Sending initial batch request:', JSON.stringify(initialBatchRequest, null, 2));
 
-        const credentialResponse = await fetch(`${ISSUER_URL}/credential`, {
+        const initialResponse = await fetch(`${ISSUER_URL}/batch_credential`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${accessToken}`
             },
-            body: JSON.stringify(credentialRequest)
+            body: JSON.stringify(initialBatchRequest)
         });
 
-        const responseData = await credentialResponse.json();
-        console.log('[Step 6.2] Credential response:', JSON.stringify(responseData, null, 2));
-
-        // Try batch request if individual request fails
-        if (responseData.credential === "Error") {
-            console.log('[Step 6.3] Attempting batch credential request...');
-            
-            const batchRequest = {
-                credential_requests: [{
-                    format: "vc+sd-jwt",
-                    vct: "eu.europa.ec.eudi.pid_jwt_vc_json",
-                    proof: {
-                        proof_type: "jwt",
-                        jwt: jwt
-                    }
-                }]
-            };
-
-            const batchResponse = await fetch(`${ISSUER_URL}/batch_credential`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accessToken}`
-                },
-                body: JSON.stringify(batchRequest)
-            });
-
-            const batchData = await batchResponse.json();
-            console.log('[Step 6.3] Batch credential response:', JSON.stringify(batchData, null, 2));
-
-            if (batchData.credential_responses?.[0]?.credential) {
-                await SecureStore.setItemAsync('credential_token', JSON.stringify(batchData.credential_responses[0].credential));
-                return batchData;
-            }
+        if (!initialResponse.ok) {
+            const errorText = await initialResponse.text();
+            console.error('[Step 6.2] Initial batch request failed:', errorText);
+            throw new Error(`Initial batch request failed with status: ${initialResponse.status}`);
         }
 
+        const nonceData = await initialResponse.json();
+        console.log('[Step 6.2] Received c_nonce response:', JSON.stringify(nonceData, null, 2));
+
+        if (!nonceData.c_nonce) {
+            console.error('[Step 6.2] Error: No c_nonce in response');
+            throw new Error('No c_nonce received in initial response');
+        }
+
+        // Step 6.3: Generate final JWT proof with nonce
+        console.log('[Step 6.3] Generating final JWT proof with nonce:', nonceData.c_nonce);
+        
+        const finalHeader = {
+            typ: "openid4vci-proof+jwt",
+            alg: "ES256",
+            jwk: {
+                kty: "EC",
+                crv: "P-256",
+                x: "wUuP2OlwHefeE-Y16Wj7PHAzZ0JAQyevqWMfd5-KmKY",
+                y: "YW-b8O3Uk3NUrk9oZpAT1laPeAgiNQwDcotWiwBFQ6E"
+            }
+        };
+
+        const finalPayload = {
+            aud: ISSUER_URL,
+            iat: Math.floor(Date.now() / 1000),
+            nonce: nonceData.c_nonce,
+            jti: await generateUUID()
+        };
+
+        console.log('[Step 6.3] Final JWT components:', {
+            header: JSON.stringify(finalHeader),
+            payload: JSON.stringify(finalPayload)
+        });
+
+        const finalEncodedHeader = base64url(JSON.stringify(finalHeader));
+        const finalEncodedPayload = base64url(JSON.stringify(finalPayload));
+        const finalJwt = `${finalEncodedHeader}.${finalEncodedPayload}.${initialSignature}`;
+
+        // Step 6.4: Send final batch credential request
+        const finalBatchRequest = {
+            credential_requests: [
+                {
+                    credential_identifier: "eu.europa.ec.eudi.pid_jwt_vc_json",
+                    format: "vc+sd-jwt",
+                    proof: {
+                        proof_type: "jwt",
+                        jwt: finalJwt
+                    }
+                },
+                {
+                    credential_identifier: "eu.europa.ec.eudi.pid_mdoc",
+                    proof: {
+                        proof_type: "jwt",
+                        jwt: finalJwt
+                    }
+                }
+            ]
+        };
+
+        console.log('[Step 6.4] Sending final batch request:', JSON.stringify(finalBatchRequest, null, 2));
+
+        const batchResponse = await fetch(`${ISSUER_URL}/batch_credential`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify(finalBatchRequest)
+        });
+
+        if (!batchResponse.ok) {
+            const errorText = await batchResponse.text();
+            console.error('[Step 6.4] Batch credential request failed:', errorText);
+            throw new Error(`Batch credential request failed with status: ${batchResponse.status}`);
+        }
+
+        const responseData = await batchResponse.json();
+        console.log('[Step 6.4] Received batch credential response:', JSON.stringify(responseData, null, 2));
+
+        // Step 6.5: Store received credentials
+        if (responseData.credential_responses?.length > 0) {
+            console.log('[Step 6.5] Starting credential storage process...');
+            const storageErrors = [];
+            const storedCredentials = [];
+
+            for (let i = 0; i < responseData.credential_responses.length; i++) {
+                const credential = responseData.credential_responses[i].credential;
+                if (credential) {
+                    try {
+                        const format = i === 0 ? 'jwt_vc' : 'mdoc';
+                        console.log(`[Step 6.5] Storing ${format} credential...`);
+                        
+                        await CredentialStorage.storeCredential(
+                            format,
+                            credential
+                        );
+                        console.log(`[Step 6.5] Successfully stored ${format} credential`);
+                        storedCredentials.push(format);
+                    } catch (storageError) {
+                        const errorMessage = `Error storing ${i === 0 ? 'jwt_vc' : 'mdoc'} credential: ${storageError.message}`;
+                        console.error('[Step 6.5]', errorMessage);
+                        storageErrors.push(errorMessage);
+                    }
+                } else {
+                    console.warn(`[Step 6.5] No credential data received for index ${i}`);
+                }
+            }
+
+            if (storageErrors.length > 0) {
+                console.warn('[Step 6.5] Completed with storage warnings:', storageErrors);
+                console.log('[Step 6.5] Successfully stored credentials:', storedCredentials);
+            } else if (storedCredentials.length > 0) {
+                console.log('[Step 6.5] All credentials stored successfully:', storedCredentials);
+            } else {
+                console.warn('[Step 6.5] No credentials were stored');
+            }
+        } else {
+            console.warn('[Step 6.5] No credentials received in response');
+        }
+
+        console.log('[Step 6] ====== Batch Credential Request Flow Completed Successfully ======');
         return responseData;
     } catch (error) {
-        console.error('[Step 6] Error:', error);
+        console.error('[Step 6] ====== Error in Batch Credential Request Flow ======');
+        console.error('[Step 6] Error details:', error);
         throw error;
     }
 }
