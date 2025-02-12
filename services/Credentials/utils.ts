@@ -16,11 +16,6 @@ export const digest = (
 ): Uint8Array => {
     const nodeAlg = toNodeCryptoAlg(algorithm);
     const hash = QuickCrypto.createHash(nodeAlg);
-    // if (typeof data === 'string') {
-    //     hash.update(data);
-    // } else {
-    //     hash.update(Buffer.from(data));
-    // }
     hash.update(data);
     const hashBuffer = hash.digest();
     return new Uint8Array(hashBuffer);
@@ -61,7 +56,7 @@ export const ES256 = {
                 true, // whether the key is extractable (i.e., can be used in exportKey)
                 ['sign'],
             );
-    
+
             return async (data: string) => {
                 const encoder = new TextEncoder();
                 const signature = await QuickCrypto.subtle.sign(
@@ -69,10 +64,10 @@ export const ES256 = {
                         name: 'ECDSA',
                         hash: { name: 'sha-256' as HashAlgorithm }, // Required for ES256
                     },
-                    privateKey,
+                    privateKey as CryptoKey,
                     encoder.encode(data),
                 );
-    
+
                 return btoa(String.fromCharCode(...new Uint8Array(signature)))
                     .replace(/\+/g, '-')
                     .replace(/\//g, '_')
@@ -84,9 +79,8 @@ export const ES256 = {
         }
     },
 
-    async getVerifier(publicKeyJWK: object) {
+    async getVerifier(publicKeyJWK: JWK) {
         try {
-            console.log("Pub key for ver: ", publicKeyJWK)
             const publicKey = await QuickCrypto.subtle.importKey(
                 'jwk',
                 publicKeyJWK,
@@ -97,7 +91,8 @@ export const ES256 = {
                 true, // whether the key is extractable (i.e., can be used in exportKey)
                 ['verify'],
             );
-    
+            console.log("After import call")
+            console.log("IMPORTED ISS PUB KEY full structure:", JSON.stringify(publicKey, null, 2));
             return async (data: string, signatureBase64url: string) => {
                 const encoder = new TextEncoder();
                 const signature = Uint8Array.from(
@@ -126,13 +121,13 @@ export const ES256 = {
 export const createSignerVerifier = async (privateKeyInput?: object, publicKeyInput?: object) => {
     try {
         const { publicKey, privateKey } = publicKeyInput && privateKeyInput ?
-            { publicKey: publicKeyInput, privateKey: privateKeyInput } : 
+            { publicKey: publicKeyInput, privateKey: privateKeyInput } :
             await ES256.generateKeyPair();
-        console.log("priv: ", privateKey);
-        console.log("pub: ", publicKey);
         return {
             signer: await ES256.getSigner(privateKey),
             verifier: await ES256.getVerifier(publicKey),
+            privateKey,
+            publicKey
         };
     } catch (error) {
         console.log("Error: ", error);

@@ -1,15 +1,35 @@
 import { SDJwtVcInstance, SdJwtVcPayload } from '@sd-jwt/sd-jwt-vc';
-import type { DisclosureFrame, KBOptions, SDJWTCompact } from '@sd-jwt/types';
-import { createSignerVerifier, digest, ES256, generateSalt, } from './utils';
-import { JWK } from 'react-native-quick-crypto/lib/typescript/src/keys';
+import type { DisclosureFrame, kbHeader, KBOptions, kbPayload, SDJWTCompact } from '@sd-jwt/types';
+import { createSignerVerifier, digest, ES256, generateSalt } from './utils';
+
+export interface SdJwt {
+    getKeyPair: () => { privateKey: object | undefined; publicKey: object | undefined };
+    signJwt: (data: string) => Promise<string | undefined>;
+    issueCredential: <T extends SdJwtVcPayload>(claims: T, disclosureFrame: DisclosureFrame<T>, options?: { header?: object; }) => Promise<SDJWTCompact>;
+    validateCredential: (encodedSDJwt: string) => Promise<false | { payload: unknown; header: Record<string, unknown> | undefined; }>;
+    presentCredential: (encodedSDJwt: string, presentationFrame?: { [x: string]: boolean | undefined }, options?: { kb?: KBOptions }) => Promise<string>;
+    verifyPresentation: (encodedSDJwt: string, requiredClaimKeys?: string[], requireKeyBindings?: boolean) => Promise<"" | Record<string, any>>;
+    getClaims: (endcodedSDJwt: string) => Promise<unknown>;
+    decodeCredential: (endcodedSDJwt: SDJWTCompact) => Promise<"" | any>;
+}
+interface SDJwt<H = Record<string, unknown>, P = Record<string, unknown>, KH = kbHeader, KP = kbPayload> {
+    header: H;
+    payload: P;
+    kb?: {
+        header: KH;
+        payload: KP;
+    };
+}
 
 // Function to create an SDJwt instance and provide utility methods for SDJwt operations
-export const createSdJwt = async (privateKey?: object, publicKey?: object) => {
+export const createSdJwt = async (privateKeyInput?: object, publicKeyInput?: object) => {
+    console.log("Before creating signer and veirifer")
     // Create a signer and verifier for issuing and verifying SDJwt credentials
-    const { signer, verifier } = await createSignerVerifier(
-        (privateKey ? privateKey : undefined),
-        (publicKey ? publicKey : undefined)
+    const { signer, verifier, privateKey, publicKey } = await createSignerVerifier(
+        (privateKeyInput ? privateKeyInput : undefined),
+        (publicKeyInput ? publicKeyInput : undefined)
     );
+    console.log("After creating signer and verifier: ");
 
     // Initialize the SDJwt instance with the required configuration
     const sdjwt = new SDJwtVcInstance({
@@ -23,6 +43,18 @@ export const createSdJwt = async (privateKey?: object, publicKey?: object) => {
 
     // Return an object containing utility methods to interact with SDJwt
     return {
+        // Return the key pair
+        getKeyPair() {
+            return { privateKey, publicKey };
+        },
+        // 
+        async signJwt(data: string) {
+            try {
+                return await signer?.(data);
+            } catch (error) {
+                console.error("Error signing data: ", error);
+            }
+        },
         // Method to issue a signed SDJwt credential
         async issueCredential<T extends SdJwtVcPayload>(claims: T, disclosureFrame: DisclosureFrame<T>,
             options?: { header?: object }): Promise<SDJWTCompact> {

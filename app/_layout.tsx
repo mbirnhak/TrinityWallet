@@ -58,7 +58,7 @@ function AppStateListener() {
 
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
+      if (nextAppState === 'background') {
         // Logout when app goes to background or inactive
         await signOut();
       }
