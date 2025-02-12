@@ -1,11 +1,25 @@
 import { Stack } from 'expo-router';
 import { AuthProvider } from '@/context/AuthContext';
 import * as Font from 'expo-font';
-import { AppState, AppStateStatus, View } from 'react-native';
+import { AppState, AppStateStatus } from 'react-native';
 import { useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-function StackLayout() {
+// Theme colors for the entire app
+export const theme = {
+    dark: '#000000',
+    darker: '#1C1C1E',
+    background: '#121214',
+    surface: '#18181B',
+    primary: '#0A84FF',
+    primaryDark: '#0066CC',
+    accent: '#5E5CE6',
+    text: '#FFFFFF',
+    textSecondary: '#98989F',
+    border: '#2C2C2E',
+};
+
+function RootLayoutNav() {
   useEffect(() => {
     Font.loadAsync({
       'Poppins-Regular': require('../assets/fonts/Poppins-Regular.ttf'),
@@ -15,40 +29,44 @@ function StackLayout() {
   }, []);
 
   return (
-    <Stack
-      screenOptions={{
+    <Stack 
+      screenOptions={{ 
         headerShown: false,
-        animation: 'fade',
-        contentStyle: { backgroundColor: '#ffffff' }
+        contentStyle: { backgroundColor: theme.dark }
       }}
     >
-      <Stack.Screen name='index' />
-      <Stack.Screen name='callback' />
+      <Stack.Screen name="index" />
+      <Stack.Screen name="callback" />
       <Stack.Screen
-        name='(registration)/openId'
+        name="(registration)/openId"
         options={{
           animation: 'slide_from_right',
         }}
       />
       <Stack.Screen
-        name='(registration)/pin-setup'
+        name="(registration)/pin-setup"
         options={{
           animation: 'slide_from_right',
         }}
       />
       <Stack.Screen
-        name='(registration)/biometric-setup'
+        name="(registration)/biometric-setup"
         options={{
           animation: 'slide_from_right',
         }}
       />
       <Stack.Screen
-        name='login'
+        name="login"
         options={{
           animation: 'fade',
         }}
       />
-      <Stack.Screen name='(app)' />
+      <Stack.Screen 
+        name="(app)" 
+        options={{
+          animation: 'fade',
+        }}
+      />
     </Stack>
   );
 }
@@ -59,7 +77,6 @@ function AppStateListener() {
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
-        // Logout when app goes to background or inactive
         await signOut();
       }
     };
@@ -67,7 +84,7 @@ function AppStateListener() {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
     return () => {
-      subscription.remove(); // Clean up the listener
+      subscription.remove();
     };
   }, [signOut]);
 
@@ -78,7 +95,7 @@ export default function Root() {
   return (
     <AuthProvider>
       <AppStateListener />
-      <StackLayout />
+      <RootLayoutNav />
     </AuthProvider>
   );
 }

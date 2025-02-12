@@ -7,6 +7,20 @@ import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import * as Animatable from 'react-native-animatable';
 import { Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const theme = {
+    dark: '#000000',
+    darker: '#1C1C1E',
+    background: '#121214',
+    surface: '#18181B',
+    primary: '#0A84FF',
+    primaryDark: '#0066CC',
+    accent: '#5E5CE6',
+    text: '#FFFFFF',
+    textSecondary: '#98989F',
+    border: '#2C2C2E',
+};
 
 export default function BiometricSetup() {
     const [biometricType, setBiometricType] = useState<'face' | 'fingerprint' | null>(null);
@@ -19,7 +33,7 @@ export default function BiometricSetup() {
         } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
             setBiometricType('fingerprint');
         }
-    }
+    };
 
     useEffect(() => {
         checkBiometricSupport();
@@ -46,87 +60,97 @@ export default function BiometricSetup() {
                 ]
             );
         }
-    }
+    };
 
     return (
-        <Animatable.View 
-            animation="fadeIn" 
-            duration={1000} 
+        <LinearGradient
+            colors={[theme.dark, theme.background]}
             style={styles.container}
         >
-            <Animatable.Text 
-                animation="fadeInDown"
-                delay={500}
-                style={styles.title}
+            <Animatable.View 
+                animation="fadeIn" 
+                duration={1000} 
+                style={styles.content}
             >
-                Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
-            </Animatable.Text>
-
-            <Animatable.Text 
-                animation="fadeInDown"
-                delay={700}
-                style={styles.subtitle}
-            >
-                Use Biometrics for quick and secure access to your wallet
-            </Animatable.Text>
-
-            <Animatable.View
-                animation="fadeInUp"
-                delay={1000}
-            >
-                <TouchableOpacity
-                    style={styles.button}
-                    onPress={handleEnableBiometrics}
+                <Animatable.Text 
+                    animation="fadeInDown"
+                    delay={500}
+                    style={styles.title}
                 >
-                    <Text style={styles.buttonText}>
-                        Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
-                    </Text>
-                </TouchableOpacity>
+                    Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
+                </Animatable.Text>
+
+                <Animatable.Text 
+                    animation="fadeInDown"
+                    delay={700}
+                    style={styles.subtitle}
+                >
+                    Use Biometrics for quick and secure access to your wallet
+                </Animatable.Text>
+
+                <Animatable.View
+                    animation="fadeInUp"
+                    delay={1000}
+                >
+                    <TouchableOpacity
+                        onPress={handleEnableBiometrics}
+                    >
+                        <LinearGradient
+                            colors={[theme.primary, theme.primaryDark]}
+                            style={styles.button}
+                        >
+                            <Text style={styles.buttonText}>
+                                Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
+                            </Text>
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </Animatable.View>
             </Animatable.View>
-        </Animatable.View>
+        </LinearGradient>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+    },
+    content: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
-        backgroundColor: '#ffffff',
     },
     title: {
         fontFamily: 'Poppins-Bold',
         fontSize: 28,
-        color: '#0078D4',
+        color: theme.text,
         marginBottom: 15,
         textAlign: 'center',
     },
     subtitle: {
         fontFamily: 'Poppins-Regular',
         fontSize: 16,
-        color: '#666',
+        color: theme.textSecondary,
         marginBottom: 40,
         textAlign: 'center',
         paddingHorizontal: 20,
         lineHeight: 24,
     },
     button: {
-        backgroundColor: '#0078D4',
         paddingHorizontal: 30,
         paddingVertical: 15,
         borderRadius: 25,
         width: 300,
         alignItems: 'center',
-        elevation: 3,
-        shadowColor: '#000',
+        shadowColor: theme.primary,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.25,
         shadowRadius: 3.84,
+        elevation: 5,
     },
     buttonText: {
-        fontFamily: 'Poppins-Regular',
-        color: '#FFFFFF',
+        fontFamily: 'Poppins-Bold',
+        color: theme.text,
         fontSize: 16,
     }
 });
