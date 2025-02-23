@@ -108,7 +108,7 @@ export default function Transactions() {
 
                     <ActionButton 
                         onPress={handleOpenDoor}
-                        icon="door"
+                        icon="lock-open"
                         title="Open Door"
                         description="Access secure areas"
                         gradient={[theme.accent, '#4B0082']}
