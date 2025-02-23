@@ -1,16 +1,15 @@
-import { Text, View, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Text } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
-import { requestCredential } from '../../services/credentialIssuance';
 import { CredentialStorage, StoredCredential } from '../../services/credentialStorage';
 import * as Animatable from 'react-native-animatable';
 import { useEffect, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { theme } from './_layout';
 import { LinearGradient } from 'expo-linear-gradient';
+import { theme } from './_layout';
+import CredentialCard from '../../components/CredentialCard';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function Home() {
-    const { signOut } = useAuth();
     const [credentials, setCredentials] = useState<StoredCredential | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -33,23 +32,6 @@ export default function Home() {
     useEffect(() => {
         fetchCredentials();
     }, []);
-
-    const handleCredentialRequest = async () => {
-        try {
-            setLoading(true);
-            await requestCredential();
-            await fetchCredentials();
-        } catch (error) {
-            console.error('Error requesting credentials:', error);
-            Alert.alert(
-                'Error',
-                'Failed to request credentials. Please check your connection and try again.',
-                [{ text: 'OK' }]
-            );
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const viewCredentialDetails = async (format: 'jwt_vc' | 'mdoc') => {
         try {
@@ -77,20 +59,6 @@ export default function Home() {
         }
     };
 
-    const handleSignOut = async () => {
-        try {
-            await signOut();
-            router.replace('/login');
-        } catch (error) {
-            console.error('Error signing out:', error);
-            Alert.alert(
-                'Error',
-                'Failed to sign out. Please try again.',
-                [{ text: 'OK' }]
-            );
-        }
-    };
-
     return (
         <ScrollView 
             style={styles.container}
@@ -107,76 +75,57 @@ export default function Home() {
                     style={styles.gradientHeader}
                 >
                     <Text style={styles.welcomeText}>Trinity Wallet</Text>
+                    <Text style={styles.subtitleText}>Your Digital Identity Hub</Text>
                 </LinearGradient>
-
-                <TouchableOpacity 
-                    onPress={handleCredentialRequest} 
-                    style={[
-                        styles.requestCredentialButton,
-                        loading && styles.buttonDisabled
-                    ]}
-                    disabled={loading}
-                >
-                    <LinearGradient
-                        colors={[theme.primary, theme.primaryDark]}
-                        style={styles.buttonGradient}
-                    >
-                        <Text style={styles.buttonText}>
-                            {loading ? 'Processing...' : 'Request Credentials'}
-                        </Text>
-                    </LinearGradient>
-                </TouchableOpacity>
 
                 {credentials ? (
                     <Animatable.View 
                         animation="fadeInUp" 
                         duration={800} 
-                        style={styles.credentialContainer}
+                        style={styles.credentialsContainer}
                     >
-                        <Text style={styles.credentialTitle}>Stored Credentials</Text>
-                        
-                        <TouchableOpacity 
-                            style={styles.credentialItem}
+                        <View style={styles.sectionHeader}>
+                            <View style={styles.sectionTitleContainer}>
+                                <Ionicons name="wallet-outline" size={24} color={theme.primary} />
+                                <Text style={styles.sectionTitle}>Your Credentials</Text>
+                            </View>
+                        </View>
+
+                        <CredentialCard
+                            type="jwt_vc"
+                            isAvailable={!!credentials.jwt_vc}
+                            timestamp={String(credentials.timestamp)}
                             onPress={() => viewCredentialDetails('jwt_vc')}
-                        >
-                            <View style={styles.credentialContent}>
-                                <Text style={styles.credentialLabel}>
-                                    PID (SD-JWT-VC)
-                                </Text>
-                                <Text style={credentials.jwt_vc ? styles.statusSuccess : styles.statusMissing}>
-                                    {credentials.jwt_vc ? '✓' : '✗'}
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity 
-                            style={styles.credentialItem}
+                        />
+                        
+                        <CredentialCard
+                            type="mdoc"
+                            isAvailable={!!credentials.mdoc}
+                            timestamp={String(credentials.timestamp)}
                             onPress={() => viewCredentialDetails('mdoc')}
-                        >
-                            <View style={styles.credentialContent}>
-                                <Text style={styles.credentialLabel}>
-                                    PID (mDOC)
-                                </Text>
-                                <Text style={credentials.mdoc ? styles.statusSuccess : styles.statusMissing}>
-                                    {credentials.mdoc ? '✓' : '✗'}
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                        />
 
-                        {credentials.timestamp && (
-                            <Text style={styles.timestampText}>
-                                Last Updated: {new Date(credentials.timestamp).toLocaleString()}
+                        <View style={styles.infoContainer}>
+                            <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />
+                            <Text style={styles.infoText}>
+                                Tap on a credential to expand and view details
                             </Text>
-                        )}
+                        </View>
                     </Animatable.View>
                 ) : !loading && (
-                    <Animatable.Text 
+                    <Animatable.View 
                         animation="fadeIn" 
                         duration={800} 
-                        style={styles.noCredentialText}
+                        style={styles.emptyStateContainer}
                     >
-                        No credentials issued yet
-                    </Animatable.Text>
+                        <Ionicons name="wallet-outline" size={48} color={theme.textSecondary} />
+                        <Text style={styles.emptyStateText}>
+                            No credentials issued yet
+                        </Text>
+                        <Text style={styles.emptyStateSubtext}>
+                            Head to the Transactions tab to request new credentials
+                        </Text>
+                    </Animatable.View>
                 )}
             </Animatable.View>
         </ScrollView>
@@ -193,8 +142,6 @@ const styles = StyleSheet.create({
     },
     contentContainer: {
         flexGrow: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
         padding: 20,
         paddingTop: 40,
     },
@@ -203,7 +150,7 @@ const styles = StyleSheet.create({
         paddingVertical: 20,
         alignItems: 'center',
         borderRadius: 15,
-        marginBottom: 40,
+        marginBottom: 30,
     },
     welcomeText: {
         fontFamily: 'Poppins-Bold',
@@ -211,91 +158,65 @@ const styles = StyleSheet.create({
         color: theme.text,
         textAlign: 'center',
     },
-    requestCredentialButton: {
-        width: '80%',
-        height: 50,
-        borderRadius: 25,
-        overflow: 'hidden',
-        marginBottom: 20,
+    subtitleText: {
+        fontFamily: 'Poppins-Regular',
+        fontSize: 16,
+        color: theme.textSecondary,
+        marginTop: 8,
     },
-    buttonGradient: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
+    credentialsContainer: {
+        width: '100%',
     },
-    buttonDisabled: {
-        opacity: 0.7,
-    },
-    signOutButton: {
-        width: '80%',
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: 'rgba(255, 69, 58, 0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginTop: 20,
-    },
-    buttonText: {
-        fontFamily: 'Poppins-Bold',
-        color: theme.text,
-        fontSize: 18,
-    },
-    credentialContainer: {
-        width: '90%',
-        padding: 20,
-        backgroundColor: theme.surface,
-        borderRadius: 15,
-        borderWidth: 1,
-        borderColor: theme.border,
-    },
-    credentialTitle: {
-        fontFamily: 'Poppins-Bold',
-        fontSize: 18,
-        color: theme.text,
-        marginBottom: 16,
-    },
-    credentialItem: {
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        marginVertical: 4,
-        backgroundColor: theme.darker,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: theme.border,
-    },
-    credentialContent: {
+    sectionHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+        marginBottom: 16,
+        paddingHorizontal: 4,
     },
-    credentialLabel: {
-        fontFamily: 'Poppins-Medium',
-        fontSize: 16,
+    sectionTitleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    sectionTitle: {
+        fontFamily: 'Poppins-Bold',
+        fontSize: 20,
         color: theme.text,
+        marginLeft: 8,
     },
-    statusSuccess: {
-        fontFamily: 'Poppins-Bold',
-        fontSize: 18,
-        color: theme.success,
+    infoContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.darker,
+        padding: 12,
+        borderRadius: 12,
+        marginTop: 16,
     },
-    statusMissing: {
-        fontFamily: 'Poppins-Bold',
-        fontSize: 18,
-        color: theme.error,
-    },
-    timestampText: {
+    infoText: {
         fontFamily: 'Poppins-Regular',
-        fontSize: 12,
-        color: theme.textSecondary,
-        marginTop: 12,
-        textAlign: 'center',
-        fontStyle: 'italic',
-    },
-    noCredentialText: {
-        fontFamily: 'Poppins-Regular',
-        marginTop: 20,
         fontSize: 14,
         color: theme.textSecondary,
+        marginLeft: 8,
+    },
+    emptyStateContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 40,
+    },
+    emptyStateText: {
+        fontFamily: 'Poppins-Medium',
+        fontSize: 18,
+        color: theme.textSecondary,
+        marginTop: 16,
         textAlign: 'center',
+    },
+    emptyStateSubtext: {
+        fontFamily: 'Poppins-Regular',
+        fontSize: 14,
+        color: theme.textSecondary,
+        marginTop: 8,
+        textAlign: 'center',
+        opacity: 0.8,
     },
 });

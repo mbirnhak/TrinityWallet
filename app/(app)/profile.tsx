@@ -56,8 +56,8 @@ function Profile() {
                             <Ionicons name="person" size={60} color={theme.text} />
                         </LinearGradient>
                     </View>
-                    <Text style={styles.userName}>Matthew Birnhak</Text>
-                    <Text style={styles.userEmail}>mbirnhak@trincoll.edu</Text>
+                    <Text style={styles.userName}>Shivanshu Dwivedi</Text>
+                    <Text style={styles.userEmail}>sdwivedi@trincoll.edu</Text>
                 </LinearGradient>
 
                 <View style={styles.section}>
@@ -154,8 +154,8 @@ function Profile() {
                             <Text style={styles.modalTitle}>Help & Support</Text>
                             <Text style={styles.modalText}>
                                 For support inquiries, please contact:{'\n\n'}
-                                <Text style={styles.modalHighlight}>support@trinitywallet.com</Text>{'\n'}
-                                <Text style={styles.modalHighlight}>+1 (555) 123-4567</Text>{'\n\n'}
+                                <Text style={styles.modalHighlight}>sdwivedi@trincoll.edu</Text>{'\n'}
+                                <Text style={styles.modalHighlight}>+1 (860) 209 7055</Text>{'\n\n'}
                                 Hours: Mon-Fri, 9 AM - 6 PM EST
                             </Text>
                             <TouchableOpacity 
