@@ -6,14 +6,12 @@ import { CredentialStorage, StoredCredential } from '../../services/credentialSt
 import * as Animatable from 'react-native-animatable';
 import { useEffect, useState } from 'react';
 import { createSdJwt } from '@/services/Credentials/SdJwtVc';
-import type { DisclosureFrame, SD, DECOY } from '@sd-jwt/types';
 import * as SecureStore from 'expo-secure-store';
-import { ES256 } from '@/services/Credentials/utils';
 import QuickCrypto from 'react-native-quick-crypto';
 
 export default function Home() {
   const { signOut } = useAuth();
-  // const claims = {
+  // const claims1 = {
   //   firstname: 'John',
   //   lastname: 'Doe',
   //   ssn: '123-45-6789',
@@ -23,9 +21,9 @@ export default function Home() {
   //   iss: 'Issuer',
   //   iat: new Date().getTime(),
   //   vct: 'ExampleCredentials',
-  //   ...claims,
+  //   ...claims1,
   // };
-  // const disclosureFrame: DisclosureFrame<typeof claims> = {
+  // const disclosureFrame1: DisclosureFrame<typeof claims1> = {
   //   _sd: ['firstname', 'lastname', 'ssn'],
   // };
   const testPresentation = async () => {
@@ -33,29 +31,21 @@ export default function Home() {
     if (!credential) {
       return null;
     }
+    console.log("Credential: ", credential)
     const privateKey_string = await SecureStore.getItemAsync("priv-key");
     const publicKey_string = await SecureStore.getItemAsync("pub-key");
     if (!privateKey_string || !publicKey_string) {
       return null;
     }
     const privateKey = JSON.parse(privateKey_string);
+    console.log("Priv Key: ", privateKey)
     const publicKey = JSON.parse(publicKey_string);
     const sdjwt = await createSdJwt(privateKey, publicKey);
 
-    type SdJwtClaims = {
-      [key: string]: any;
-      _sd?: string[];
-    };
-
-    const claims = await sdjwt.getClaims(credential) as SdJwtClaims;
-    // const disclosureFrame = {
-    //   _sd: ['given_name', 'family_name'],
-    // } as DisclosureFrame<typeof claims>; 
     const disclosureFrame = {
       "given_name": true,
       "family_name": true
     };
-    // as DisclosureFrame<typeof claims>
 
     const presentation = await sdjwt.presentCredential(credential, disclosureFrame);
     console.log("Presentation: ", presentation);
@@ -217,7 +207,7 @@ export default function Home() {
 
             <TouchableOpacity
               style={styles.credentialItem}
-              onPress={testCredValidation}
+              onPress={testPresentation}
             >
               <Text style={styles.credentialLabel}>
                 PID (SD-JWT-VC):

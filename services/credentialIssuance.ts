@@ -254,6 +254,8 @@ async function generateJWTProof(nonce?: string): Promise<{ jwt: string, sdJwt: S
         const { privateKey, publicKey } = sdJwt.getKeyPair();
         SecureStore.setItemAsync("pub-key", JSON.stringify(publicKey));
         SecureStore.setItemAsync("priv-key", JSON.stringify(privateKey));
+        console.log("Public Key Generated: ", publicKey)
+        console.log("Private Key Generated: ", privateKey)
         // const kid = await jose.calculateJwkThumbprint(publicKey as JWK);  // Use kid instead of embedding key
         const header = {
             typ: "openid4vci-proof+jwt",

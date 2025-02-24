@@ -37,11 +37,18 @@ export const ES256 = {
             ['sign', 'verify'], // can be used to sign and verify signatures
         );
         const { publicKey, privateKey } = keyPair as CryptoKeyPair;
-        // Export the public and private keys in JWK format
-        const publicKeyJWK = await QuickCrypto.subtle.exportKey('jwk', publicKey as CryptoKey);
-        const privateKeyJWK = await QuickCrypto.subtle.exportKey('jwk', privateKey as CryptoKey);
 
-        return { publicKey: publicKeyJWK, privateKey: privateKeyJWK };
+        // Export the public and private keys in JWK format
+        const publicKeyJWK: any = await QuickCrypto.subtle.exportKey('jwk', publicKey as CryptoKey);
+        const privateKeyJWK: any = await QuickCrypto.subtle.exportKey('jwk', privateKey as CryptoKey);
+        // Remove trailing periods from base64url values
+        publicKeyJWK.x = publicKeyJWK.x.replace(/\.$/, ''); // replaces only a trailing period with an empty string
+        publicKeyJWK.y = publicKeyJWK.y.replace(/\.$/, '');
+        privateKeyJWK.x = privateKeyJWK.x.replace(/\.$/, ''); // replaces only a trailing period with an empty string
+        privateKeyJWK.y = privateKeyJWK.y.replace(/\.$/, '');
+        privateKeyJWK.d = privateKeyJWK.d.replace(/\.$/, '');
+
+        return { publicKey: publicKeyJWK as JWK, privateKey: privateKeyJWK as JWK };
     },
 
     async getSigner(privateKeyJWK: object) {
