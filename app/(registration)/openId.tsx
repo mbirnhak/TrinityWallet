@@ -1,11 +1,10 @@
 import { StyleSheet, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { router } from 'expo-router';
-import { Buffer } from 'buffer';
 import React from 'react';
 import * as Animatable from 'react-native-animatable';
 import { Text, View } from 'react-native';
-
+import { Buffer } from 'buffer';
 global.Buffer = Buffer;
 
 export default function OpenId() {
