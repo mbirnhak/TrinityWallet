@@ -1,11 +1,27 @@
-import { Redirect, Stack, useRouter } from "expo-router";
+import { Redirect, Tabs, useRouter } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { View, StyleSheet } from 'react-native';
 import LottieView from 'lottie-react-native';
 import * as Font from 'expo-font';
-import * as Animatable from 'react-native-animatable';
 import { useEffect } from "react";
 import { useCredentialDeepLinkHandler } from '../../services/credentialIssuance';
+import { Ionicons } from '@expo/vector-icons';
+
+// Define theme colors for reuse
+export const theme = {
+  dark: '#000000',
+  darker: '#1C1C1E',
+  background: '#121214',
+  surface: '#18181B',
+  primary: '#0A84FF',
+  primaryDark: '#0066CC',
+  accent: '#5E5CE6',
+  text: '#FFFFFF',
+  textSecondary: '#98989F',
+  border: '#2C2C2E',
+  error: '#FF453A',
+  success: '#32D74B',
+};
 
 export default function ProtectedLayout() {
   const { authState, isLoading } = useAuth();
@@ -37,27 +53,67 @@ export default function ProtectedLayout() {
   }
 
   return (
-    <Stack 
+    <Tabs
       screenOptions={{
-        headerShown: true,
+        headerShown: false,
         headerStyle: {
-          backgroundColor: '#0078D4',
+          backgroundColor: theme.dark,
+          borderBottomWidth: 0.5,
+          borderBottomColor: theme.border,
         },
-        headerTintColor: '#fff',
+        headerTintColor: theme.text,
         headerTitleStyle: {
           fontFamily: 'Poppins-Bold',
-          fontWeight: '600',
+          fontSize: 17,
+          color: theme.text,
         },
-        animation: 'fade',
+        tabBarStyle: {
+          backgroundColor: theme.dark,
+          borderTopWidth: 0.5,
+          borderTopColor: theme.border,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.textSecondary,
+        tabBarLabelStyle: {
+          fontFamily: 'Poppins-Medium',
+          fontSize: 12,
+        }
       }}
     >
-      <Stack.Screen
+      <Tabs.Screen
         name="home"
         options={{
-          title: "eIDAS Wallet"
+          title: "Trinity Wallet",
+          tabBarLabel: "Home",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="wallet" size={size} color={color} />
+          ),
         }}
       />
-    </Stack>
+      <Tabs.Screen
+        name="transactions"
+        options={{
+          title: "Transactions",
+          tabBarLabel: "Transactions",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="swap-horizontal" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarLabel: "Profile",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tabs>
   );
 }
 
@@ -66,7 +122,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: theme.dark,
   },
   lottieAnimation: {
     width: 200,

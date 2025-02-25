@@ -1,25 +1,23 @@
-import { StyleSheet, TouchableOpacity, Alert, Text } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import React, { useState, useEffect } from 'react';
+import { StyleSheet, TouchableOpacity, Alert, Text, View } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
 import { biometricAvailability } from '@/services/Authentication';
-
+import * as Animatable from 'react-native-animatable';
+import { LinearGradient } from 'expo-linear-gradient';
+import LottieView from 'lottie-react-native';
+import { theme } from './_layout';
 
 export default function PinLogin() {
-    const { signIn, unRegister, authState } = useAuth()
+    const { signIn, unRegister, authState } = useAuth();
     const [pin, setPin] = useState('');
     const [useBiometrics, setUseBiometrics] = useState(false);
     const [attempts, setAttempts] = useState(0);
     const MAX_ATTEMPTS = 5;
+    const lottieRef = useRef<LottieView>(null);
 
-    /**
-    * useEffect hook to check whether biometric authentication should be used
-    * and sets the appropriate state based on the `forcePin` value.
-    */
     useEffect(() => {
         const checkForcePin = async () => {
             try {
@@ -32,46 +30,33 @@ export default function PinLogin() {
         checkForcePin();
     }, [authState]);
 
-
-
-    /**
-     * Handles biometric authentication by checking biometric availability
-     * and signing in the user if available. If not, it prompts the user to 
-     * enable biometrics in the device settings.
-     */
     const handleBiometricAuth = async () => {
+        if (lottieRef.current) {
+            lottieRef.current.play();
+        }
+
         const biometricStatus = await biometricAvailability();
 
         if (biometricStatus.isAvailable) {
-            // Biometrics are available, proceed with authentication
             const success = await signIn(null);
             if (success) {
                 router.replace('/home');
             }
         } else {
-            // Show alert to guide user to settings
             Alert.alert(
                 'Biometrics Unavailable',
                 'Please enable biometrics in your device settings.',
                 [
                     {
                         text: 'Open Settings',
-                        onPress: () => {
-                            Linking.openSettings();
-                        }
+                        onPress: Linking.openSettings
                     },
                     { text: 'Cancel', style: 'cancel' }
                 ]
             );
         }
-    }
+    };
 
-    /**
-     * Handles the input of numbers for the PIN. Adds the number to the current PIN
-     * if the length is less than 6, and validates the PIN once it reaches 6 digits.
-     * 
-     * @param number The number input by the user for the PIN.
-     */
     const handlePinInput = (number: string) => {
         if (pin.length < 6) {
             const newPin = pin + number;
@@ -82,22 +67,12 @@ export default function PinLogin() {
         }
     };
 
-    /**
-     * Deletes the last character from the PIN if the PIN has any digits.
-     */
     const handleDelete = () => {
         if (pin.length > 0) {
             setPin(pin.slice(0, -1));
         }
     };
 
-    /**
-     * Validates the entered PIN by calling the signIn function.
-     * If valid, navigates to the home page; otherwise, it increments the failed
-     * attempts and alerts the user with the remaining attempts.
-     * 
-     * @param inputPin The PIN entered by the user.
-     */
     const validatePin = async (inputPin: string) => {
         try {
             const isValid = await signIn(inputPin);
@@ -124,10 +99,6 @@ export default function PinLogin() {
         }
     };
 
-    /**
-     * Handles the scenario when the maximum number of failed attempts is reached.
-     * It unregisters the user and prompts them to authenticate with Microsoft again.
-     */
     const handleMaxAttemptsReached = async () => {
         await unRegister();
         Alert.alert(
@@ -143,70 +114,108 @@ export default function PinLogin() {
     };
 
     return (
-        <ThemedView style={styles.container}>
-            <ThemedText type="title" style={styles.title}>
-                {useBiometrics ? 'Unlock with Biometrics' : 'Enter PIN'}
-            </ThemedText>
+        <LinearGradient
+            colors={[theme.dark, theme.background]}
+            style={styles.container}
+        >
+            <Animatable.View 
+                animation="fadeIn" 
+                duration={1000} 
+                style={styles.content}
+            >
+                <Animatable.Text 
+                    animation="fadeInDown" 
+                    delay={300}
+                    style={styles.title}
+                >
+                    {useBiometrics ? 'Face ID' : 'Enter PIN'}
+                </Animatable.Text>
 
-            {useBiometrics ? (
-                <>
-                    <TouchableOpacity
-                        style={styles.biometricButton}
-                        onPress={handleBiometricAuth}
-                    >
-                        <Ionicons name="lock-open-outline" size={65} color="#007AFF" />
-                    </TouchableOpacity>
-                    <Text
-                        onPress={() => setUseBiometrics(false)}
-                        style={styles.switchText}>
-                        Use PIN
-                    </Text>
-                </>
-            ) : (
-                <>
-                    <ThemedView style={styles.pinDisplay}>
-                        {[...Array(6)].map((_, i) => (
-                            <ThemedView
-                                key={i}
-                                style={[
-                                    styles.pinDot,
-                                    i < pin.length && styles.pinDotFilled
-                                ]}
-                            />
-                        ))}
-                    </ThemedView>
-
-                    <ThemedView style={styles.keypad}>
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map((key, index) => (
-                            <TouchableOpacity
-                                key={index}
-                                style={[
-                                    styles.keypadButton,
-                                    key === '' && styles.keypadButtonDisabled
-                                ]}
-                                onPress={() => {
-                                    if (key === '⌫') {
-                                        handleDelete();
-                                    } else if (key !== '') {
-                                        handlePinInput(key.toString());
-                                    }
-                                }}
-                                disabled={key === ''}
+                {useBiometrics ? (
+                    <Animatable.View animation="fadeIn" delay={500}>
+                        <TouchableOpacity
+                            style={styles.biometricButton}
+                            onPress={handleBiometricAuth}
+                        >
+                            <LinearGradient
+                                colors={[theme.surface, theme.darker]}
+                                style={styles.biometricGradient}
                             >
-                                <ThemedText style={styles.keypadButtonText}>
-                                    {key}
-                                </ThemedText>
-                            </TouchableOpacity>
-                        ))}
-                    </ThemedView>
-                </>
-            )}
-        </ThemedView>
+                                <LottieView
+                                    ref={lottieRef}
+                                    source={require('../assets/fonts/face-id.json')}
+                                    style={styles.lottieAnimation}
+                                    autoPlay={false}
+                                    loop={false}
+                                />
+                            </LinearGradient>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => setUseBiometrics(false)}
+                        >
+                            <LinearGradient
+                                colors={[theme.primary, theme.primaryDark]}
+                                style={styles.switchButton}
+                            >
+                                <Text style={styles.switchText}>Use PIN</Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    </Animatable.View>
+                ) : (
+                    <Animatable.View animation="fadeIn" delay={500} style={styles.pinContainer}>
+                        <View style={styles.pinDisplay}>
+                            {[...Array(6)].map((_, i) => (
+                                <Animatable.View
+                                    key={i}
+                                    animation={i < pin.length ? 'bounceIn' : undefined}
+                                    duration={200}
+                                    style={[
+                                        styles.pinDot,
+                                        i < pin.length && styles.pinDotFilled
+                                    ]}
+                                />
+                            ))}
+                        </View>
+
+                        <View style={styles.keypad}>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map((key, index) => (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={[
+                                        styles.keypadButton,
+                                        key === '' && styles.keypadButtonDisabled,
+                                        typeof key === 'number' && styles.numberButton
+                                    ]}
+                                    onPress={() => {
+                                        if (key === '⌫') {
+                                            handleDelete();
+                                        } else if (key !== '') {
+                                            handlePinInput(key.toString());
+                                        }
+                                    }}
+                                    disabled={key === ''}
+                                >
+                                    <Text style={[
+                                        styles.keypadButtonText,
+                                        key === '⌫' && styles.deleteButtonText
+                                    ]}>
+                                        {key}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </Animatable.View>
+                )}
+            </Animatable.View>
+        </LinearGradient>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
+        flex: 1,
+    },
+    content: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
@@ -215,21 +224,32 @@ const styles = StyleSheet.create({
     title: {
         fontFamily: 'Poppins-Bold',
         fontSize: 28,
-        color: '#0078D4',
+        color: theme.text,
         marginBottom: 40,
         textAlign: 'center',
     },
     biometricButton: {
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#f5f5f5',
-        padding: 30,
+        marginBottom: 20,
         borderRadius: 50,
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3,
+        overflow: 'hidden',
+    },
+    biometricGradient: {
+        padding: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 50,
+        borderWidth: 1,
+        borderColor: theme.border,
+        width: 260,
+        height: 260,
+    },
+    lottieAnimation: {
+        width: 260,
+        height: 260,
+    },
+    pinContainer: {
+        width: '100%',
+        alignItems: 'center',
     },
     pinDisplay: {
         flexDirection: 'row',
@@ -240,11 +260,12 @@ const styles = StyleSheet.create({
         height: 20,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: '#0078D4',
+        borderColor: theme.primary,
         marginHorizontal: 10,
+        backgroundColor: 'transparent',
     },
     pinDotFilled: {
-        backgroundColor: '#0078D4',
+        backgroundColor: theme.primary,
     },
     keypad: {
         flexDirection: 'row',
@@ -260,29 +281,35 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         margin: '1.5%',
         borderRadius: 40,
-        backgroundColor: '#f0f0f0',
+    },
+    numberButton: {
+        backgroundColor: theme.surface,
+        borderWidth: 1,
+        borderColor: theme.border,
     },
     keypadButtonDisabled: {
         backgroundColor: 'transparent',
     },
     keypadButtonText: {
         fontSize: 24,
-        color: '#00000',
+        color: theme.text,
+        fontFamily: 'Poppins-Regular',
+    },
+    deleteButtonText: {
+        color: theme.primary,
+        fontFamily: 'Poppins-Bold',
+        fontSize: 36,
+    },
+    switchButton: {
+        marginTop: 20,
+        borderRadius: 25,
+        overflow: 'hidden',
     },
     switchText: {
-        marginTop: 20,
-        color: '#ffffff',
+        color: theme.text,
         fontFamily: 'Poppins-Bold',
         fontSize: 20,
         textAlign: 'center',
         padding: 12,
-        backgroundColor: '#0078D4',
-        borderRadius: 25,
-        width: 150,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.2,
-        shadowRadius: 2,
     },
 });

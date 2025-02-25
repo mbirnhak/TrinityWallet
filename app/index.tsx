@@ -1,9 +1,11 @@
 import { router } from 'expo-router';
-import { ActivityIndicator, View, StyleSheet, Text, AppState, AppStateStatus } from 'react-native';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import * as Animatable from 'react-native-animatable';
 import LottieView from 'lottie-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { theme } from './_layout';
 
 export default function Index() {
     const { authState, isLoading } = useAuth();
@@ -34,23 +36,30 @@ export default function Index() {
 
     if (!isReady || isLoading) {
         return (
-            <View style={styles.container}>
-                <Animatable.View animation="fadeIn" duration={1000}>
+            <LinearGradient
+                colors={[theme.dark, theme.background]}
+                style={styles.container}
+            >
+                <Animatable.View 
+                    animation="fadeIn" 
+                    duration={1000}
+                    style={styles.content}
+                >
                     <LottieView
                         source={require('../assets/fonts/loading.json')}
                         autoPlay
                         loop
                         style={styles.lottieAnimation}
                     />
+                    <Animatable.Text 
+                        animation="fadeIn"
+                        delay={500}
+                        style={styles.text}
+                    >
+                        Welcome to your Digital Wallet
+                    </Animatable.Text>
                 </Animatable.View>
-                <Animatable.Text 
-                    animation="fadeIn"
-                    delay={500}
-                    style={styles.text}
-                >
-                    Welcome to your Digital Wallet
-                </Animatable.Text>
-            </View>
+            </LinearGradient>
         );
     }
     return null;
@@ -59,9 +68,11 @@ export default function Index() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+    },
+    content: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#ffffff',
     },
     lottieAnimation: {
         width: 150,
@@ -70,7 +81,9 @@ const styles = StyleSheet.create({
     text: {
         fontFamily: 'Poppins-Bold',
         fontSize: 32,
-        color: '#0078D4',
+        color: theme.text,
         marginTop: 20,
+        textAlign: 'center',
+        paddingHorizontal: 20,
     }
 });

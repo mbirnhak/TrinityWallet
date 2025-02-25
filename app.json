@@ -11,6 +11,8 @@
     "ios": {
       "infoPlist": {
         "NSFaceIDUsageDescription": "This app uses Face ID to authenticate the user",
+        "NSPhotoLibraryUsageDescription": "Allow access to photo library to set your profile picture",
+        "NSCameraUsageDescription": "Allow camera access to take profile pictures",
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
@@ -36,7 +38,10 @@
       },
       "permissions": [
         "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "package": "edu.trincoll.trinitywallet",
       "intentFilters": [
@@ -92,7 +97,14 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app needs access to your photos to set your profile picture.",
+          "cameraPermission": "The app needs access to your camera to take profile pictures."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
