@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs'
 
 export async function generateSalt() {
     const randomBytes = await Crypto.getRandomBytesAsync(16);
-    return Buffer.from(randomBytes).toString('hex')
+    return Buffer.from(randomBytes).toString('hex');
 }
 
 // Simplified function for hashing a value with SHA-256

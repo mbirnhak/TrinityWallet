@@ -1,4 +1,4 @@
-import { bcryptHash, bcryptVerifyHash, generateSalt, shaHash, verifyAgainstShaHash } from "@/services/crypto";
+import { bcryptHash, bcryptVerifyHash, generateSalt, shaHash, verifyAgainstShaHash } from "@/services/Utils/crypto";
 
 jest.mock('expo-secure-store');
 

@@ -7,6 +7,8 @@ import { useRouter } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import base64url from 'base64url';
 import { CredentialStorage } from './credentialStorage';
+import { createSdJwt, SdJwt } from './Credentials/SdJwtVc';
+import { JWK } from 'react-native-quick-crypto/lib/typescript/src/keys';
 
 // Constants
 const ISSUER_URL = 'https://issuer.eudiw.dev';
@@ -28,12 +30,17 @@ interface AuthorizationDetails {
 }
 
 interface CredentialRequest {
-    format: string;
-    vct: string;
+    credential_identifier: string;
+    format?: string;
+    vct?: string;
     proof: {
         proof_type: string;
         jwt: string;
     };
+}
+
+interface BatchRequest {
+    credential_requests: CredentialRequest[];
 }
 
 interface CredentialResponse {
@@ -51,22 +58,22 @@ interface CredentialResponse {
  */
 async function generatePKCE() {
     console.log('[PKCE] Generating PKCE parameters...');
-    
+
     // Generate code verifier
-    const randomBytes = await Crypto.getRandomValues(new Uint8Array(32));
+    const randomBytes = Crypto.getRandomValues(new Uint8Array(32));
     const verifier = base64url.encode(Buffer.from(randomBytes));
-    
+
     // Generate code challenge
     const encoder = new TextEncoder();
     const data = encoder.encode(verifier);
     const hash = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, data);
     const challenge = base64url.encode(Buffer.from(hash));
-    
+
     console.log('[PKCE] Code verifier generated:', verifier.slice(0, 10) + '...');
     console.log('[PKCE] Code challenge generated:', challenge.slice(0, 10) + '...');
-    
+
     await SecureStore.setItemAsync(CODE_VERIFIER_KEY, verifier);
-    
+
     return { verifier, challenge };
 }
 
@@ -74,18 +81,9 @@ async function generatePKCE() {
  * Generate random state
  */
 async function generateState() {
-    const state = base64url.encode(Buffer.from(await Crypto.getRandomValues(new Uint8Array(16))));
+    const state = base64url.encode(Buffer.from(Crypto.getRandomValues(new Uint8Array(16))));
     await SecureStore.setItemAsync(STATE_KEY, state);
-    console.log('[Auth] Generated state:', state);
     return state;
-}
-
-/**
- * Generate a random UUID using Expo's Crypto
- */
-async function generateUUID(): Promise<string> {
-    const bytes = await Crypto.getRandomValues(new Uint8Array(16));
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -96,13 +94,11 @@ async function fetchMetadata() {
         console.log('[Step 1.a] Fetching OpenID Configuration...');
         const oidcResponse = await fetch(`${ISSUER_URL}/.well-known/openid-configuration`);
         const oidcMetadata = await oidcResponse.json();
-        console.log('[Step 1.a] OIDC Metadata:', JSON.stringify(oidcMetadata, null, 2));
-        
+
         console.log('[Step 1.b] Fetching Credential Issuer metadata...');
         const credResponse = await fetch(`${ISSUER_URL}/.well-known/openid-credential-issuer`);
         const credMetadata = await credResponse.json();
-        console.log('[Step 1.b] Credential Metadata:', JSON.stringify(credMetadata, null, 2));
-        
+
         await SecureStore.setItemAsync(METADATA_STORAGE_KEY, JSON.stringify(oidcMetadata));
         return { oidcMetadata, credMetadata };
     } catch (error) {
@@ -117,9 +113,9 @@ async function fetchMetadata() {
 async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: string }) {
     try {
         console.log('[Step 2] Initiating Push Authorization Request...');
-        
+
         const state = await generateState();
-        
+
         // Updated to request both credential types
         const authDetails = [
             {
@@ -133,8 +129,6 @@ async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: st
             }
         ];
 
-        console.log('[Step 2] Authorization Details:', JSON.stringify(authDetails, null, 2));
-
         const parEndpoint = oidcMetadata.pushed_authorization_request_endpoint;
         const params = new URLSearchParams({
             response_type: 'code',
@@ -147,8 +141,6 @@ async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: st
             authorization_details: JSON.stringify(authDetails)
         });
 
-        console.log('[Step 2] PAR Request Payload:', params.toString());
-
         const response = await fetch(parEndpoint, {
             method: 'POST',
             headers: {
@@ -158,8 +150,7 @@ async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: st
         });
 
         const parResponse = await response.json();
-        console.log('[Step 2] PAR Response:', JSON.stringify(parResponse, null, 2));
-        
+
         return parResponse;
     } catch (error) {
         console.error('[PAR] Error:', error);
@@ -173,10 +164,7 @@ async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: st
 async function initiateAuthorization(oidcMetadata: any, requestUri: string) {
     try {
         console.log('[Step 3] Creating authorization URL...');
-        
         const authUrl = `${oidcMetadata.authorization_endpoint}?client_id=${CLIENT_ID}&request_uri=${requestUri}`;
-        console.log('[Step 3] Authorization URL:', authUrl);
-        
         await Linking.openURL(authUrl);
     } catch (error) {
         console.error('[Authorization] Error:', error);
@@ -185,15 +173,26 @@ async function initiateAuthorization(oidcMetadata: any, requestUri: string) {
 }
 
 /**
+ * Extract the issuers public key of a specific algorthim type (AES, RSA, EC, oct)
+ * @param issuer_pub_keys Array containing all public keys
+ * @param targetKty Key type requested
+ * @returns Key matching type requested or undefined
+ */
+export function findIssuerKeyByType(issuer_pub_keys: { keys: JWK[] }, targetKty: string) {
+    const keys = issuer_pub_keys.keys;
+    return keys.find(key => key.kty === targetKty);
+}
+
+/**
  * Step 4: Handle token exchange
  */
 export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
     try {
         console.log('[Step 4] Exchanging code for token...');
-        
+
         const codeVerifier = await SecureStore.getItemAsync(CODE_VERIFIER_KEY);
         const state = await SecureStore.getItemAsync(STATE_KEY);
-        
+
         const params = new URLSearchParams({
             grant_type: 'authorization_code',
             code,
@@ -202,8 +201,6 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
             code_verifier: codeVerifier!,
             state: state!
         });
-
-        console.log('[Step 4] Token Request Payload:', params.toString());
 
         const response = await fetch(oidcMetadata.token_endpoint, {
             method: 'POST',
@@ -218,14 +215,12 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
             console.error('[Step 4] Token request failed:', errorText);
             throw new Error(`Token request failed with status: ${response.status}`);
         }
-
         const tokenResponse = await response.json();
-        console.log('[Step 4] Token Response:', JSON.stringify(tokenResponse, null, 2));
-        
+
         // Store tokens
         await SecureStore.setItemAsync('access_token', tokenResponse.access_token);
         await SecureStore.setItemAsync('refresh_token', tokenResponse.refresh_token);
-        
+
         // Request credential with the access token if we have authorization details
         if (tokenResponse.access_token && tokenResponse.authorization_details) {
             try {
@@ -240,7 +235,7 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
                 throw error;
             }
         }
-        
+
         return tokenResponse;
     } catch (error) {
         console.error('[Token] Error:', error);
@@ -251,40 +246,44 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
 /**
  * Step 5: Generate JWT proof for credential request
  */
-async function generateJWTProof(nonce: string, accessToken: string): Promise<string> {
+async function generateJWTProof(nonce?: string): Promise<{ jwt: string, sdJwt: SdJwt }> {
     try {
         console.log('[Step 5] Generating JWT proof with nonce:', nonce);
-        
+        const sdJwt = await createSdJwt();
         // Generate a key pair for signing
-        const { publicKey, privateKey } = await generateKeyPair();
-        
+        const { privateKey, publicKey } = sdJwt.getKeyPair();
+        SecureStore.setItemAsync("pub-key", JSON.stringify(publicKey));
+        SecureStore.setItemAsync("priv-key", JSON.stringify(privateKey));
+        console.log("Public Key Generated: ", publicKey)
+        console.log("Private Key Generated: ", privateKey)
+        // const kid = await jose.calculateJwkThumbprint(publicKey as JWK);  // Use kid instead of embedding key
         const header = {
             typ: "openid4vci-proof+jwt",
             alg: "ES256",
+            // kid: kid,  // Use kid instead of embedding key
             jwk: publicKey  // Include the public key in the header
         };
-
         const payload = {
             iss: CLIENT_ID,
             aud: ISSUER_URL,
             iat: Math.floor(Date.now() / 1000),
-            nonce: nonce,
-            jti: await generateUUID() // Using our custom UUID generator
+            ...(nonce && { nonce }), // Add nonce only if it's defined
+            jti: Crypto.randomUUID() // Using our Expo Crypto UUID generator
         };
+        const encodedHeader = base64url(JSON.stringify(header));
+        const encodedPayload = base64url(JSON.stringify(payload));
+        const signingInput = `${encodedHeader}.${encodedPayload}`;
 
-        console.log('[Step 5] JWT Header:', header);
-        console.log('[Step 5] JWT Payload:', payload);
-
-        // Create the JWT
-        const jwt = await new jose.SignJWT(payload)
-            .setProtectedHeader(header)
-            .setIssuedAt()
-            .setAudience(ISSUER_URL)
-            .sign(privateKey);
-
+        // Sign payload (sdJwt instance already has the private key)
+        const signature = await sdJwt.signJwt(signingInput);
+        if (!signature) {
+            throw new Error("JWT signature could not be generated");
+        }
+        const encodedSignature = base64url(signature);
+        const jwt = `${signingInput}.${encodedSignature}`;
         console.log('[Step 5] Generated JWT:', jwt);
-        
-        return jwt;
+
+        return { jwt, sdJwt };
     } catch (error) {
         console.error('[Step 5] Error generating JWT proof:', error);
         throw error;
@@ -297,61 +296,33 @@ async function generateJWTProof(nonce: string, accessToken: string): Promise<str
 async function requestCredentialWithToken(accessToken: string, authDetails: any): Promise<CredentialResponse> {
     try {
         console.log('[Step 6] ====== Starting Batch Credential Request Flow ======');
-        console.log('[Step 6] Authorization Details:', JSON.stringify(authDetails, null, 2));
 
         // Step 6.1: Create Initial JWT proof without nonce
         console.log('[Step 6.1] Generating initial JWT proof...');
-        const initialHeader = {
-            typ: "openid4vci-proof+jwt",
-            alg: "ES256",
-            jwk: {
-                kty: "EC",
-                crv: "P-256",
-                x: "wUuP2OlwHefeE-Y16Wj7PHAzZ0JAQyevqWMfd5-KmKY",
-                y: "YW-b8O3Uk3NUrk9oZpAT1laPeAgiNQwDcotWiwBFQ6E"
-            }
-        };
-
-        const initialPayload = {
-            aud: ISSUER_URL,
-            iat: Math.floor(Date.now() / 1000),
-            jti: await generateUUID()
-        };
-
-        console.log('[Step 6.1] Initial JWT components:', {
-            header: JSON.stringify(initialHeader),
-            payload: JSON.stringify(initialPayload)
-        });
-
-        const initialEncodedHeader = base64url(JSON.stringify(initialHeader));
-        const initialEncodedPayload = base64url(JSON.stringify(initialPayload));
-        const initialSignature = "IdmxwbfJIKwcaqvADp6bzV2u-o0UwKIVmo_kQkc1rZHQ9MtBDNbO21NoVr99ZEgumTX8UYNFJcr_R95xfO1NiA";
-        const initialJwt = `${initialEncodedHeader}.${initialEncodedPayload}.${initialSignature}`;
+        const { jwt, sdJwt } = await generateJWTProof();
 
         // Step 6.2: Initial batch request with proof
-        const initialBatchRequest = {
+        const initialBatchRequest: BatchRequest = {
             credential_requests: [
                 {
                     credential_identifier: "eu.europa.ec.eudi.pid_jwt_vc_json",
                     format: "vc+sd-jwt",
                     proof: {
                         proof_type: "jwt",
-                        jwt: initialJwt
+                        jwt: jwt
                     }
                 },
                 {
                     credential_identifier: "eu.europa.ec.eudi.pid_mdoc",
                     proof: {
                         proof_type: "jwt",
-                        jwt: initialJwt
+                        jwt: jwt
                     }
                 }
             ]
         };
 
-        console.log('[Step 6.2] Sending initial batch request:', JSON.stringify(initialBatchRequest, null, 2));
-
-        const initialResponse = await fetch(`${ISSUER_URL}/batch_credential`, {
+        const batchResponse = await fetch(`${ISSUER_URL}/batch_credential`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -360,90 +331,13 @@ async function requestCredentialWithToken(accessToken: string, authDetails: any)
             body: JSON.stringify(initialBatchRequest)
         });
 
-        if (!initialResponse.ok) {
-            const errorText = await initialResponse.text();
-            console.error('[Step 6.2] Initial batch request failed:', errorText);
-            throw new Error(`Initial batch request failed with status: ${initialResponse.status}`);
-        }
-
-        const nonceData = await initialResponse.json();
-        console.log('[Step 6.2] Received c_nonce response:', JSON.stringify(nonceData, null, 2));
-
-        if (!nonceData.c_nonce) {
-            console.error('[Step 6.2] Error: No c_nonce in response');
-            throw new Error('No c_nonce received in initial response');
-        }
-
-        // Step 6.3: Generate final JWT proof with nonce
-        console.log('[Step 6.3] Generating final JWT proof with nonce:', nonceData.c_nonce);
-        
-        const finalHeader = {
-            typ: "openid4vci-proof+jwt",
-            alg: "ES256",
-            jwk: {
-                kty: "EC",
-                crv: "P-256",
-                x: "wUuP2OlwHefeE-Y16Wj7PHAzZ0JAQyevqWMfd5-KmKY",
-                y: "YW-b8O3Uk3NUrk9oZpAT1laPeAgiNQwDcotWiwBFQ6E"
-            }
-        };
-
-        const finalPayload = {
-            aud: ISSUER_URL,
-            iat: Math.floor(Date.now() / 1000),
-            nonce: nonceData.c_nonce,
-            jti: await generateUUID()
-        };
-
-        console.log('[Step 6.3] Final JWT components:', {
-            header: JSON.stringify(finalHeader),
-            payload: JSON.stringify(finalPayload)
-        });
-
-        const finalEncodedHeader = base64url(JSON.stringify(finalHeader));
-        const finalEncodedPayload = base64url(JSON.stringify(finalPayload));
-        const finalJwt = `${finalEncodedHeader}.${finalEncodedPayload}.${initialSignature}`;
-
-        // Step 6.4: Send final batch credential request
-        const finalBatchRequest = {
-            credential_requests: [
-                {
-                    credential_identifier: "eu.europa.ec.eudi.pid_jwt_vc_json",
-                    format: "vc+sd-jwt",
-                    proof: {
-                        proof_type: "jwt",
-                        jwt: finalJwt
-                    }
-                },
-                {
-                    credential_identifier: "eu.europa.ec.eudi.pid_mdoc",
-                    proof: {
-                        proof_type: "jwt",
-                        jwt: finalJwt
-                    }
-                }
-            ]
-        };
-
-        console.log('[Step 6.4] Sending final batch request:', JSON.stringify(finalBatchRequest, null, 2));
-
-        const batchResponse = await fetch(`${ISSUER_URL}/batch_credential`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
-            },
-            body: JSON.stringify(finalBatchRequest)
-        });
-
         if (!batchResponse.ok) {
             const errorText = await batchResponse.text();
-            console.error('[Step 6.4] Batch credential request failed:', errorText);
-            throw new Error(`Batch credential request failed with status: ${batchResponse.status}`);
+            console.error('[Step 6.2] Initial batch request failed:', errorText);
+            throw new Error(`Initial batch request failed with status: ${batchResponse.status}`);
         }
 
         const responseData = await batchResponse.json();
-        console.log('[Step 6.4] Received batch credential response:', JSON.stringify(responseData, null, 2));
 
         // Step 6.5: Store received credentials
         if (responseData.credential_responses?.length > 0) {
@@ -457,7 +351,11 @@ async function requestCredentialWithToken(accessToken: string, authDetails: any)
                     try {
                         const format = i === 0 ? 'jwt_vc' : 'mdoc';
                         console.log(`[Step 6.5] Storing ${format} credential...`);
-                        
+                        if (i === 0) {
+                            const claims = await sdJwt.getClaims(credential);
+                            console.log('Credential Claims:', claims);
+                        }
+
                         await CredentialStorage.storeCredential(
                             format,
                             credential
@@ -465,7 +363,7 @@ async function requestCredentialWithToken(accessToken: string, authDetails: any)
                         console.log(`[Step 6.5] Successfully stored ${format} credential`);
                         storedCredentials.push(format);
                     } catch (storageError) {
-                        const errorMessage = `Error storing ${i === 0 ? 'jwt_vc' : 'mdoc'} credential: ${storageError.message}`;
+                        const errorMessage = `Error storing credential ${i}: ${storageError instanceof Error ? storageError.message : String(storageError)}`;
                         console.error('[Step 6.5]', errorMessage);
                         storageErrors.push(errorMessage);
                     }
@@ -502,13 +400,13 @@ export async function requestCredential() {
     try {
         // Step 1: Fetch metadata
         const { oidcMetadata } = await fetchMetadata();
-        
+
         // Generate PKCE parameters
         const pkce = await generatePKCE();
-        
+
         // Step 2: Push Authorization Request
         const parResponse = await pushAuthorizationRequest(oidcMetadata, pkce);
-        
+
         // Step 3: Initiate authorization
         await initiateAuthorization(oidcMetadata, parResponse.request_uri);
     } catch (error) {
@@ -526,10 +424,10 @@ export async function requestCredential() {
 function isValidCallbackUrl(url: string): boolean {
     try {
         console.log('[Deep Link] Validating URL:', url);
-        
+
         // Parse the URL
         const { scheme, hostname, path, queryParams } = Linking.parse(url);
-        
+
         console.log('[Deep Link] Parsed URL:', { scheme, hostname, path, queryParams });
 
         // Check if it's our scheme
@@ -559,7 +457,7 @@ export function useCredentialDeepLinkHandler() {
     useEffect(() => {
         const subscription = Linking.addEventListener('url', async ({ url }) => {
             console.log('[Deep Link] Received URL:', url);
-            
+
             try {
                 if (!isValidCallbackUrl(url)) {
                     console.log('[Deep Link] Invalid callback URL');
@@ -580,13 +478,13 @@ export function useCredentialDeepLinkHandler() {
                 if (queryParams.code) {
                     const metadata = await SecureStore.getItemAsync(METADATA_STORAGE_KEY);
                     const oidcMetadata = JSON.parse(metadata!);
-                    
+
                     // Exchange code for token
                     const tokenResponse = await exchangeCodeForToken(
                         queryParams.code as string,
                         oidcMetadata
                     );
-                    
+
                     // Update auth state and navigate directly to home
                     await SecureStore.setItemAsync('isAuthenticated', 'true');
                     console.log('[Deep Link] Token exchange successful, navigating to home');
