@@ -1,5 +1,5 @@
 import { useContext, createContext, type PropsWithChildren } from 'react';
-import AuthenticationService, { AuthState } from '@/services/Authentication'
+import AuthenticationService, { AuthState } from '@/services/authentication'
 import { useStorageState } from '@/hooks/useStorageState';
 
 interface AuthProps {

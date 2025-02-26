@@ -1,4 +1,4 @@
-// services/credentialIssuance.ts
+// services/Transaction/credentialIssuance.ts
 import * as SecureStore from 'expo-secure-store';
 import * as Linking from 'expo-linking';
 import { Alert } from 'react-native';
@@ -6,28 +6,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import base64url from 'base64url';
-import { CredentialStorage } from './credentialStorage';
-import { createSdJwt, SdJwt } from './Credentials/SdJwtVc';
+import { CredentialStorage } from '../credentialStorage';
+import { createSdJwt, SdJwt } from '../Credentials/SdJwtVc';
 import { JWK } from 'react-native-quick-crypto/lib/typescript/src/keys';
+import { storedValueKeys, constants } from '@/services/Utils/enums'
 
 // Constants
-const ISSUER_URL = 'https://issuer.eudiw.dev';
-const CLIENT_ID = 'ID';
-
-const DEEP_LINK_PREFIX = 'trinwallet://';
-const AUTH_PATH = 'callback';
-
-const REDIRECT_URI = `${DEEP_LINK_PREFIX}${AUTH_PATH}`;
-// Storage Keys
-const METADATA_STORAGE_KEY = 'issuer_metadata';
-const CODE_VERIFIER_KEY = 'code_verifier';
-const STATE_KEY = 'auth_state';
-
-interface AuthorizationDetails {
-    type: string;
-    format: string;
-    vct: string;
-}
+const REDIRECT_URI = `${constants.DEEP_LINK_PREFIX}${constants.ISS_PATH}`;
 
 interface CredentialRequest {
     credential_identifier: string;
@@ -72,7 +57,7 @@ async function generatePKCE() {
     console.log('[PKCE] Code verifier generated:', verifier.slice(0, 10) + '...');
     console.log('[PKCE] Code challenge generated:', challenge.slice(0, 10) + '...');
 
-    await SecureStore.setItemAsync(CODE_VERIFIER_KEY, verifier);
+    await SecureStore.setItemAsync(storedValueKeys.CODE_VERIFIER_KEY, verifier);
 
     return { verifier, challenge };
 }
@@ -82,7 +67,7 @@ async function generatePKCE() {
  */
 async function generateState() {
     const state = base64url.encode(Buffer.from(Crypto.getRandomValues(new Uint8Array(16))));
-    await SecureStore.setItemAsync(STATE_KEY, state);
+    await SecureStore.setItemAsync(storedValueKeys.STATE_KEY, state);
     return state;
 }
 
@@ -92,14 +77,14 @@ async function generateState() {
 async function fetchMetadata() {
     try {
         console.log('[Step 1.a] Fetching OpenID Configuration...');
-        const oidcResponse = await fetch(`${ISSUER_URL}/.well-known/openid-configuration`);
+        const oidcResponse = await fetch(`${constants.ISSUER_URL}/.well-known/openid-configuration`);
         const oidcMetadata = await oidcResponse.json();
 
         console.log('[Step 1.b] Fetching Credential Issuer metadata...');
-        const credResponse = await fetch(`${ISSUER_URL}/.well-known/openid-credential-issuer`);
+        const credResponse = await fetch(`${constants.ISSUER_URL}/.well-known/openid-credential-issuer`);
         const credMetadata = await credResponse.json();
 
-        await SecureStore.setItemAsync(METADATA_STORAGE_KEY, JSON.stringify(oidcMetadata));
+        await SecureStore.setItemAsync(storedValueKeys.METADATA_STORAGE_KEY, JSON.stringify(oidcMetadata));
         return { oidcMetadata, credMetadata };
     } catch (error) {
         console.error('[Metadata] Error:', error);
@@ -132,7 +117,7 @@ async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: st
         const parEndpoint = oidcMetadata.pushed_authorization_request_endpoint;
         const params = new URLSearchParams({
             response_type: 'code',
-            client_id: CLIENT_ID,
+            client_id: constants.EU_ISSUER_CLIENT_ID,
             redirect_uri: REDIRECT_URI,
             code_challenge: pkce.challenge,
             code_challenge_method: 'S256',
@@ -164,7 +149,7 @@ async function pushAuthorizationRequest(oidcMetadata: any, pkce: { challenge: st
 async function initiateAuthorization(oidcMetadata: any, requestUri: string) {
     try {
         console.log('[Step 3] Creating authorization URL...');
-        const authUrl = `${oidcMetadata.authorization_endpoint}?client_id=${CLIENT_ID}&request_uri=${requestUri}`;
+        const authUrl = `${oidcMetadata.authorization_endpoint}?client_id=${constants.EU_ISSUER_CLIENT_ID}&request_uri=${requestUri}`;
         await Linking.openURL(authUrl);
     } catch (error) {
         console.error('[Authorization] Error:', error);
@@ -190,14 +175,14 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
     try {
         console.log('[Step 4] Exchanging code for token...');
 
-        const codeVerifier = await SecureStore.getItemAsync(CODE_VERIFIER_KEY);
-        const state = await SecureStore.getItemAsync(STATE_KEY);
+        const codeVerifier = await SecureStore.getItemAsync(storedValueKeys.CODE_VERIFIER_KEY);
+        const state = await SecureStore.getItemAsync(storedValueKeys.STATE_KEY);
 
         const params = new URLSearchParams({
             grant_type: 'authorization_code',
             code,
             redirect_uri: REDIRECT_URI,
-            client_id: CLIENT_ID,
+            client_id: constants.EU_ISSUER_CLIENT_ID,
             code_verifier: codeVerifier!,
             state: state!
         });
@@ -264,8 +249,8 @@ async function generateJWTProof(nonce?: string): Promise<{ jwt: string, sdJwt: S
             jwk: publicKey  // Include the public key in the header
         };
         const payload = {
-            iss: CLIENT_ID,
-            aud: ISSUER_URL,
+            iss: constants.EU_ISSUER_CLIENT_ID,
+            aud: constants.ISSUER_URL,
             iat: Math.floor(Date.now() / 1000),
             ...(nonce && { nonce }), // Add nonce only if it's defined
             jti: Crypto.randomUUID() // Using our Expo Crypto UUID generator
@@ -322,7 +307,7 @@ async function requestCredentialWithToken(accessToken: string, authDetails: any)
             ]
         };
 
-        const batchResponse = await fetch(`${ISSUER_URL}/batch_credential`, {
+        const batchResponse = await fetch(`${constants.ISSUER_URL}/batch_credential`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -447,58 +432,4 @@ function isValidCallbackUrl(url: string): boolean {
         console.error('[Deep Link] Error validating URL:', error);
         return false;
     }
-}
-/**
- * Hook to handle deep linking
- */
-export function useCredentialDeepLinkHandler() {
-    const router = useRouter();
-
-    useEffect(() => {
-        const subscription = Linking.addEventListener('url', async ({ url }) => {
-            console.log('[Deep Link] Received URL:', url);
-
-            try {
-                if (!isValidCallbackUrl(url)) {
-                    console.log('[Deep Link] Invalid callback URL');
-                    return;
-                }
-
-                const { queryParams } = Linking.parse(url);
-                console.log('[Deep Link] Parsed params:', queryParams);
-
-                // Verify state
-                const storedState = await SecureStore.getItemAsync(STATE_KEY);
-                if (!queryParams || storedState !== queryParams.state) {
-                    console.error('[Deep Link] State mismatch');
-                    Alert.alert('Error', 'Invalid state parameter');
-                    return;
-                }
-
-                if (queryParams.code) {
-                    const metadata = await SecureStore.getItemAsync(METADATA_STORAGE_KEY);
-                    const oidcMetadata = JSON.parse(metadata!);
-
-                    // Exchange code for token
-                    const tokenResponse = await exchangeCodeForToken(
-                        queryParams.code as string,
-                        oidcMetadata
-                    );
-
-                    // Update auth state and navigate directly to home
-                    await SecureStore.setItemAsync('isAuthenticated', 'true');
-                    console.log('[Deep Link] Token exchange successful, navigating to home');
-                    router.replace('/(app)/home');
-                }
-            } catch (error) {
-                console.error('[Deep Link] Error handling callback:', error);
-                Alert.alert('Error', 'Failed to process credential');
-                router.replace('/login');
-            }
-        });
-
-        return () => {
-            subscription.remove();
-        };
-    }, [router]);
 }

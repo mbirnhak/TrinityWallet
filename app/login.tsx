@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
-import { biometricAvailability } from '@/services/Authentication';
+import { biometricAvailability } from '@/services/authentication';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';

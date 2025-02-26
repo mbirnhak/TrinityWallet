@@ -4,7 +4,7 @@ import { View, StyleSheet } from 'react-native';
 import LottieView from 'lottie-react-native';
 import * as Font from 'expo-font';
 import { useEffect } from "react";
-import { useCredentialDeepLinkHandler } from '../../services/credentialIssuance';
+import { useCredentialDeepLinkHandler } from '../../services/Transactions/credentialIssuance';
 import { Ionicons } from '@expo/vector-icons';
 
 // Define theme colors for reuse
@@ -25,8 +25,6 @@ export const theme = {
 
 export default function ProtectedLayout() {
   const { authState, isLoading } = useAuth();
-  const router = useRouter();
-  useCredentialDeepLinkHandler();
 
   useEffect(() => {
     Font.loadAsync({

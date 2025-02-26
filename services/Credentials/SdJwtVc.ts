@@ -12,14 +12,6 @@ export interface SdJwt {
     getClaims: (endcodedSDJwt: string) => Promise<unknown>;
     decodeCredential: (endcodedSDJwt: SDJWTCompact) => Promise<"" | any>;
 }
-interface SDJwt<H = Record<string, unknown>, P = Record<string, unknown>, KH = kbHeader, KP = kbPayload> {
-    header: H;
-    payload: P;
-    kb?: {
-        header: KH;
-        payload: KP;
-    };
-}
 
 // Function to create an SDJwt instance and provide utility methods for SDJwt operations
 export const createSdJwt = async (privateKeyInput?: object, publicKeyInput?: object) => {

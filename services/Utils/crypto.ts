@@ -9,14 +9,16 @@ export async function generateSalt() {
 }
 
 // Simplified function for hashing a value with SHA-256
-export async function shaHash(value: string, salt: string) {
+export async function shaHash(value: string, salt?: string): Promise<string | null> {
     try {
-        const valueSalt = `${value}:${salt}`;
+        const valueToHash = salt ? `${value}:${salt}` : value;
         const hash = await Crypto.digestStringAsync(
             Crypto.CryptoDigestAlgorithm.SHA256,
-            valueSalt
+            valueToHash
         );
-        const storedData = JSON.stringify({ hash: hash, salt: salt });
+        const storedData = salt
+            ? JSON.stringify({ hash: hash, salt: salt })
+            : hash;
         return storedData;
     } catch (error) {
         console.error('Error hashing your value: ', error);
