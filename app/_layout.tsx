@@ -36,7 +36,7 @@ function RootLayoutNav() {
       }}
     >
       <Stack.Screen name="index" />
-      <Stack.Screen name="callback" />
+      <Stack.Screen name="issuance-callback" />
       <Stack.Screen
         name="(registration)/openId"
         options={{

@@ -13,7 +13,8 @@ export enum storedValueKeys {
 
 export enum constants {
     DEEP_LINK_PREFIX = 'trinwallet://',
-    ISS_PATH = 'callback',
+    ISS_PATH = 'issuance-callback',
+    PRES_PATH = 'presentation-callback',
     ISSUER_URL = 'https://issuer.eudiw.dev',
     EU_ISSUER_CLIENT_ID = 'ID',
 }

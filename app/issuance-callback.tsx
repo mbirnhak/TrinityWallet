@@ -6,7 +6,7 @@ import * as SecureStore from 'expo-secure-store';
 import { exchangeCodeForToken } from '../services/Transactions/credentialIssuance';
 import { storedValueKeys } from '@/services/Utils/enums';
 
-export default function Callback() {
+export default function IssuanceCallback() {
     const params = useLocalSearchParams();
     const router = useRouter();
 
