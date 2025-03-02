@@ -1,5 +1,5 @@
 import { StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { biometricAvailability } from '@/services/authentication';
+import { biometricAvailability } from '../../services/Authentication';
 import * as LocalAuthentication from 'expo-local-authentication';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';

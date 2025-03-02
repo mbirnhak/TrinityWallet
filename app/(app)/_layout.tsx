@@ -1,10 +1,9 @@
-import { Redirect, Tabs, useRouter } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { View, StyleSheet } from 'react-native';
 import LottieView from 'lottie-react-native';
 import * as Font from 'expo-font';
 import { useEffect } from "react";
-import { useCredentialDeepLinkHandler } from '../../services/Transactions/credentialIssuance';
 import { Ionicons } from '@expo/vector-icons';
 
 // Define theme colors for reuse
@@ -30,6 +29,7 @@ export default function ProtectedLayout() {
     Font.loadAsync({
       'Poppins-Regular': require('../../assets/fonts/Poppins-Regular.ttf'),
       'Poppins-Bold': require('../../assets/fonts/Poppins-Bold.ttf'),
+      'Poppins-Medium': require('../../assets/fonts/Poppins-Medium.ttf'),
     });
   }, []);
 
@@ -84,20 +84,20 @@ export default function ProtectedLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          title: "Trinity Wallet",
-          tabBarLabel: "Home",
+          title: "Dashboard",
+          tabBarLabel: "Dashboard",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="wallet" size={size} color={color} />
+            <Ionicons name="home" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="transactions"
+        name="credentials"
         options={{
-          title: "Transactions",
-          tabBarLabel: "Transactions",
+          title: "Credentials",
+          tabBarLabel: "Credentials",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="swap-horizontal" size={size} color={color} />
+            <Ionicons name="wallet" size={size} color={color} />
           ),
         }}
       />

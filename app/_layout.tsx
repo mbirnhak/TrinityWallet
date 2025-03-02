@@ -17,6 +17,8 @@ export const theme = {
     text: '#FFFFFF',
     textSecondary: '#98989F',
     border: '#2C2C2E',
+    error: '#FF453A',
+    success: '#32D74B',
 };
 
 function RootLayoutNav() {
@@ -65,6 +67,29 @@ function RootLayoutNav() {
         name="(app)" 
         options={{
           animation: 'fade',
+        }}
+      />
+      
+      {/* Modal screens for the new UI */}
+      <Stack.Screen
+        name="request-credentials"
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen
+        name="present-credentials"
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen
+        name="logs"
+        options={{
+          presentation: 'modal',
+          animation: 'slide_from_bottom',
         }}
       />
     </Stack>
