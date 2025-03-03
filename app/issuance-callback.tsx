@@ -1,4 +1,4 @@
-// app/callback.tsx
+// app/issuance-callback.tsx
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,7 +13,7 @@ export default function IssuanceCallback() {
     useEffect(() => {
         async function handleCallback() {
             try {
-                console.log('[Callback] Received params:', params);
+                console.log('[Issuance Callback] Received params:', params);
 
                 if (params.code && params.state) {
                     // Verify state
@@ -30,11 +30,11 @@ export default function IssuanceCallback() {
                         router.replace('/(app)/home');
                     }
                 } else {
-                    console.log('[Callback] Missing required parameters');
+                    console.log('[Issuance Callback] Missing required parameters');
                     router.replace('/(app)/home');
                 }
             } catch (error) {
-                console.error('[Callback] Error:', error);
+                console.error('[Issuance Callback] Error:', error);
                 router.replace('/(app)/home');
             }
         }

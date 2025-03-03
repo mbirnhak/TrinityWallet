@@ -9,6 +9,7 @@ export enum storedValueKeys {
     METADATA_STORAGE_KEY = 'issuer_metadata',
     CODE_VERIFIER_KEY = 'code_verifier',
     STATE_KEY = 'auth_state',
+    VERIFIER_CLIENT_ID_KEY = 'verifier_id'
 }
 
 export enum constants {

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import base64url from 'base64url';
-import { CredentialStorage } from '../credentialStorage';
+import { CredentialStorage } from '../credentialStorageTemp';
 import { createSdJwt, SdJwt } from '../Credentials/SdJwtVc';
 import { JWK } from 'react-native-quick-crypto/lib/typescript/src/keys';
 import { storedValueKeys, constants } from '@/services/Utils/enums'
