@@ -107,10 +107,10 @@ export default function PresentCredentials() {
     );
   };
 
-  const formatDate = (timestamp: string) => {
+  const formatDate = (timestamp: number | undefined) => {
     if (!timestamp) return 'Not issued';
     
-    const date = new Date(parseInt(timestamp));
+    const date = new Date(timestamp);
     return `Issued: ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
   };
 
