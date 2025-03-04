@@ -5,11 +5,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { theme } from './(app)/_layout';
-import { CredentialStorage, StoredCredential } from '../services/credentialStorage';
+import { CredentialStorage, StoredCredential } from '../services/credentialStorageTemp';
+
+interface Credential {
+  id: string;
+  type: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  available: boolean;
+  timestamp: number | undefined;
+}
+
+type IconiconsProps = React.ComponentProps<typeof Ionicons>;
 
 export default function PresentCredentials() {
-  const [selectedCredential, setSelectedCredential] = useState(null);
-  const [availableCredentials, setAvailableCredentials] = useState([]);
+  const [selectedCredential, setSelectedCredential] = useState<string | null>(null);
+  const [availableCredentials, setAvailableCredentials] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,7 +31,7 @@ export default function PresentCredentials() {
         const metadata = await CredentialStorage.getMetadata();
         
         // Prepare credentials based on available types
-        const credentials = [
+        const credentials: Credential[] = [
           { 
             id: 'pid_sdjwt', 
             type: 'jwt_vc',
@@ -67,7 +80,7 @@ export default function PresentCredentials() {
     fetchCredentialAvailability();
   }, []);
 
-  const handleCredentialSelection = (credential) => {
+  const handleCredentialSelection = (credential: Credential) => {
     if (!credential.available) {
       Alert.alert(
         'Credential Unavailable',
@@ -94,14 +107,18 @@ export default function PresentCredentials() {
     );
   };
 
-  const formatDate = (timestamp) => {
+  const formatDate = (timestamp: string) => {
     if (!timestamp) return 'Not issued';
     
     const date = new Date(parseInt(timestamp));
     return `Issued: ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
   };
 
-  const CredentialCard = ({ credential }) => {
+  interface CredentialProps {
+    credential: Credential;
+  }
+
+  const CredentialCard = ({ credential }: CredentialProps) => {
     const isSelected = selectedCredential === credential.id;
     
     return (
@@ -125,7 +142,7 @@ export default function PresentCredentials() {
               !credential.available && styles.disabledIcon
             ]}>
               <Ionicons 
-                name={credential.icon} 
+                name={credential.icon as IconiconsProps['name']} 
                 size={24} 
                 color={credential.available ? credential.color : theme.textSecondary} 
               />

@@ -3,11 +3,24 @@ import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { theme } from './_layout';
 
+// Define types for the icon names
+type IconiconsProps = React.ComponentProps<typeof Ionicons>;
+type MaterialIconsProps = React.ComponentProps<typeof MaterialIcons>;
+type MaterialCommunityIconsProps = React.ComponentProps<typeof MaterialCommunityIcons>;
+
+interface LogItem {
+  id: number;
+  type: string;
+  credential: string;
+  date: Date;
+  status: string;
+}
+
 // Placeholder log data
-const PLACEHOLDER_LOGS = [
+const PLACEHOLDER_LOGS: LogItem[] = [
   { id: 1, type: 'issuance', credential: 'PID (SD-JWT)', date: new Date(2025, 2, 1, 10, 30), status: 'success' },
   { id: 2, type: 'presentation', credential: 'Trinity Library', date: new Date(2025, 2, 1, 9, 15), status: 'success' },
   { id: 3, type: 'presentation', credential: 'PID (mDOC)', date: new Date(2025, 1, 28, 14, 22), status: 'success' },
@@ -18,15 +31,15 @@ const PLACEHOLDER_LOGS = [
 ];
 
 export default function Dashboard() {
-  const [recentLogs, setRecentLogs] = useState([]);
+  const [recentLogs, setRecentLogs] = useState<LogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   useEffect(() => {
     // In a real implementation, this would fetch actual logs from storage or API
     setRecentLogs(PLACEHOLDER_LOGS.slice(0, 5));
   }, []);
 
-  const navigateTo = (route) => {
+  const navigateTo = (route: Href) => {
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
@@ -35,7 +48,7 @@ export default function Dashboard() {
   };
 
   // Function to get icon based on action type
-  const getActionIcon = (type) => {
+  const getActionIcon = (type: string): IconiconsProps['name'] => {
     switch (type) {
       case 'issuance':
         return 'key-outline';
@@ -56,8 +69,13 @@ export default function Dashboard() {
     }
   };
 
+  interface SectionHeaderProps {
+    title: string;
+    icon: IconiconsProps['name'];
+  }
+
   // Component for section header
-  const SectionHeader = ({ title, icon }) => (
+  const SectionHeader = ({ title, icon }: SectionHeaderProps) => (
     <View style={styles.categoryHeader}>
       <View style={styles.categoryTitleContainer}>
         <Ionicons name={icon} size={20} color={theme.primary} />
@@ -67,9 +85,17 @@ export default function Dashboard() {
     </View>
   );
 
+  interface ActionButtonProps {
+    icon: string;
+    title: string;
+    onPress: () => void;
+    color?: string;
+    iconProvider?: 'Ionicons' | 'MaterialIcons' | 'MaterialCommunityIcons';
+  }
+
   // Component for action buttons
-  const ActionButton = ({ icon, title, onPress, color = theme.primary, iconProvider = 'Ionicons' }) => (
-    <TouchableOpacity 
+  const ActionButton = ({ icon, title, onPress, color = theme.primary, iconProvider = 'Ionicons' }: ActionButtonProps) => (
+    <TouchableOpacity
       style={styles.actionButton}
       onPress={onPress}
       disabled={isLoading}
@@ -79,9 +105,9 @@ export default function Dashboard() {
         style={styles.actionGradient}
       >
         <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-          {iconProvider === 'Ionicons' && <Ionicons name={icon} size={24} color={color} />}
-          {iconProvider === 'MaterialIcons' && <MaterialIcons name={icon} size={24} color={color} />}
-          {iconProvider === 'MaterialCommunityIcons' && <MaterialCommunityIcons name={icon} size={24} color={color} />}
+          {iconProvider === 'Ionicons' && <Ionicons name={icon as IconiconsProps['name']} size={24} color={color} />}
+          {iconProvider === 'MaterialIcons' && <MaterialIcons name={icon as MaterialIconsProps['name']} size={24} color={color} />}
+          {iconProvider === 'MaterialCommunityIcons' && <MaterialCommunityIcons name={icon as MaterialCommunityIconsProps['name']} size={24} color={color} />}
         </View>
         <Text style={styles.actionTitle}>{title}</Text>
       </LinearGradient>
@@ -89,30 +115,35 @@ export default function Dashboard() {
   );
 
   // Component for log items
-  const LogItem = ({ log }) => (
-    <Animatable.View 
-      animation="fadeIn" 
+  interface LogItemProps {
+    log: LogItem;
+  }
+
+  // Component for log items
+  const LogItem = ({ log }: LogItemProps) => (
+    <Animatable.View
+      animation="fadeIn"
       duration={500}
       style={styles.logItem}
     >
       <View style={styles.logIconContainer}>
         <View style={[
-          styles.logIcon, 
+          styles.logIcon,
           { backgroundColor: log.status === 'success' ? theme.primary + '20' : theme.error + '20' }
         ]}>
-          <Ionicons 
-            name={getActionIcon(log.type)} 
-            size={16} 
-            color={log.status === 'success' ? theme.primary : theme.error} 
+          <Ionicons
+            name={getActionIcon(log.type)}
+            size={16}
+            color={log.status === 'success' ? theme.primary : theme.error}
           />
         </View>
       </View>
       <View style={styles.logContent}>
         <Text style={styles.logTitle}>
-          {log.type === 'issuance' ? 'Issued: ' : 
-           log.type === 'presentation' ? 'Presented: ' :
-           log.type === 'access' ? 'Accessed: ' :
-           log.type === 'transaction' ? 'Transaction: ' : ''}
+          {log.type === 'issuance' ? 'Issued: ' :
+            log.type === 'presentation' ? 'Presented: ' :
+              log.type === 'access' ? 'Accessed: ' :
+                log.type === 'transaction' ? 'Transaction: ' : ''}
           <Text style={styles.logHighlight}>{log.credential}</Text>
         </Text>
         <Text style={styles.logTime}>
@@ -120,24 +151,24 @@ export default function Dashboard() {
         </Text>
       </View>
       <View style={styles.logStatus}>
-        <Ionicons 
-          name={log.status === 'success' ? 'checkmark-circle' : 'close-circle'} 
-          size={16} 
-          color={log.status === 'success' ? theme.success : theme.error} 
+        <Ionicons
+          name={log.status === 'success' ? 'checkmark-circle' : 'close-circle'}
+          size={16}
+          color={log.status === 'success' ? theme.success : theme.error}
         />
       </View>
     </Animatable.View>
   );
 
   return (
-    <ScrollView 
+    <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      <Animatable.View 
-        animation="fadeIn" 
-        duration={1000} 
+      <Animatable.View
+        animation="fadeIn"
+        duration={1000}
         style={styles.contentContainer}
       >
         <LinearGradient
@@ -151,25 +182,25 @@ export default function Dashboard() {
         {/* Credentials & Wallet Section */}
         <SectionHeader title="Credentials & Wallet" icon="card-outline" />
         <View style={styles.actionsGrid}>
-          <ActionButton 
-            icon="key" 
-            title="Request Credentials" 
+          <ActionButton
+            icon="key"
+            title="Request Credentials"
             onPress={() => navigateTo('/request-credentials')}
           />
-          <ActionButton 
-            icon="id-card" 
+          <ActionButton
+            icon="id-card"
             title="Present Credentials"
             onPress={() => navigateTo('/present-credentials')}
             color={theme.accent}
           />
-          <ActionButton 
-            icon="wallet" 
+          <ActionButton
+            icon="wallet"
             title="Credentials"
             onPress={() => router.navigate('/(app)/credentials')}
             color="#FF9500" // Apple's orange
           />
-          <ActionButton 
-            icon="create" 
+          <ActionButton
+            icon="create"
             title="E-Signature"
             onPress={() => alert('Coming soon')}
             color="#5E5CE6" // Apple's purple
@@ -179,15 +210,15 @@ export default function Dashboard() {
         {/* Transactions & Access Section */}
         <SectionHeader title="Transactions & Access" icon="swap-horizontal-outline" />
         <View style={styles.actionsGrid}>
-          <ActionButton 
-            icon="meeting-room" 
+          <ActionButton
+            icon="meeting-room"
             title="Unlock Door"
             onPress={() => alert('Door unlocked successfully')}
             color="#FF375F" // Apple's pink
             iconProvider="MaterialIcons"
           />
-          <ActionButton 
-            icon="book" 
+          <ActionButton
+            icon="book"
             title="Issue Book"
             onPress={() => alert('Book issued successfully')}
             color="#30D158" // Apple's green
@@ -197,14 +228,14 @@ export default function Dashboard() {
         {/* Security & Backup Section */}
         <SectionHeader title="Security & Backup" icon="shield-checkmark-outline" />
         <View style={styles.actionsGrid}>
-          <ActionButton 
-            icon="cloud-upload" 
+          <ActionButton
+            icon="cloud-upload"
             title="Backup"
             onPress={() => alert('Backup feature will be available soon')}
             color="#64D2FF" // Apple's blue
           />
-          <ActionButton 
-            icon="cloud-download" 
+          <ActionButton
+            icon="cloud-download"
             title="Restore"
             onPress={() => alert('Restore feature will be available soon')}
             color="#30D158" // Apple's green
@@ -227,7 +258,7 @@ export default function Dashboard() {
           ))}
         </View>
       </Animatable.View>
-      
+
       {/* Loading overlay */}
       {isLoading && (
         <View style={styles.loadingOverlay}>

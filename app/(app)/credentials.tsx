@@ -1,6 +1,5 @@
 import { View, ScrollView, StyleSheet, Alert, Text, TouchableOpacity } from 'react-native';
-import { useAuth } from '@/context/AuthContext';
-import { CredentialStorage, StoredCredential } from '../../services/credentialStorage';
+import { CredentialStorage, StoredCredential } from '../../services/credentialStorageTemp';
 import * as Animatable from 'react-native-animatable';
 import { useEffect, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
