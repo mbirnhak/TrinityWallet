@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useMemo } from 'react';
 import { router } from 'expo-router';
-import { theme } from './(app)/_layout';
+import { theme } from './_layout';
 
 // Log entry type definition
 type LogEntry = {

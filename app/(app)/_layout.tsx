@@ -111,6 +111,24 @@ export default function ProtectedLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="logs"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="request-credentials"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="present-credentials"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
     </Tabs>
   );
 }

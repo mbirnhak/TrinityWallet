@@ -69,29 +69,6 @@ function RootLayoutNav() {
           animation: 'fade',
         }}
       />
-      
-      {/* Modal screens for the new UI */}
-      <Stack.Screen
-        name="request-credentials"
-        options={{
-          presentation: 'modal',
-          animation: 'slide_from_bottom',
-        }}
-      />
-      <Stack.Screen
-        name="present-credentials"
-        options={{
-          presentation: 'modal',
-          animation: 'slide_from_bottom',
-        }}
-      />
-      <Stack.Screen
-        name="logs"
-        options={{
-          presentation: 'modal',
-          animation: 'slide_from_bottom',
-        }}
-      />
     </Stack>
   );
 }

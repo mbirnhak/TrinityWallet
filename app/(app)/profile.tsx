@@ -24,7 +24,7 @@ function Profile() {
     const handleSignOut = async () => {
         try {
             await signOut();
-            router.replace('/login');
+            router.replace('../login');
         } catch (error) {
             Alert.alert(
                 'Error',

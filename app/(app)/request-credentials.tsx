@@ -4,8 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { router } from 'expo-router';
-import { theme } from './(app)/_layout';
-import { requestCredential } from '../services/Transactions/credentialIssuance';
+import { theme } from './_layout';
+import { requestCredential } from '../../services/Transactions/credentialIssuance';
 
 export default function RequestCredentials() {
   const [selectedCredentials, setSelectedCredentials] = useState({});

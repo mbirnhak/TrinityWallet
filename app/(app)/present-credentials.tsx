@@ -4,8 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
-import { theme } from './(app)/_layout';
-import { CredentialStorage, StoredCredential } from '../services/credentialStorageTemp';
+import { theme } from './_layout';
+import { CredentialStorage, StoredCredential } from '../../services/credentialStorageTemp';
 
 interface Credential {
   id: string;
