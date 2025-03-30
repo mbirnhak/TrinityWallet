@@ -8,8 +8,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from './_layout';
 
 export default function Index() {
-    const { authState, isLoading } = useAuth();
+    const { authState, isLoading, setIsLoading } = useAuth();
     const [isReady, setIsReady] = useState(false);
+    useEffect(() => {
+        setIsLoading(false);
+    }, [])
 
     useEffect(() => {
         const timer = setTimeout(() => setIsReady(true), 0);
@@ -44,14 +47,17 @@ export default function Index() {
     }, [isReady, authState, isLoading]);
 
     if (!isReady || isLoading) {
+        console.log("isLoading: ", isLoading)
+        console.log("isReady: ", isReady)
         return (
             <LinearGradient
                 colors={[theme.dark, theme.background]}
                 style={styles.container}
             >
-                <Animatable.View 
-                    animation="fadeIn" 
+                <Animatable.View
+                    animation="fadeIn"
                     duration={1000}
+                    useNativeDriver={true}
                     style={styles.content}
                 >
                     <LottieView
@@ -60,9 +66,10 @@ export default function Index() {
                         loop
                         style={styles.lottieAnimation}
                     />
-                    <Animatable.Text 
+                    <Animatable.Text
                         animation="fadeIn"
                         delay={500}
+                        useNativeDriver={true}
                         style={styles.text}
                     >
                         Welcome to your Digital Wallet

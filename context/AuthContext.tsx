@@ -1,4 +1,4 @@
-import { useContext, createContext, type PropsWithChildren } from 'react';
+import { useContext, createContext, type PropsWithChildren, useEffect } from 'react';
 import AuthenticationService, { AuthState } from '../services/Authentication';
 import { useStorageState } from '@/hooks/useStorageState';
 
@@ -13,6 +13,7 @@ interface AuthProps {
     setForcePin: (forcePin: boolean) => Promise<void>;
     hasEmailHash: () => Promise<boolean | null>;
     isLoading: boolean;
+    setIsLoading: (value: boolean) => void;
 }
 
 const initialAuthState: AuthState = {
@@ -38,6 +39,7 @@ const AuthContext = createContext<AuthProps>({
     setForcePin: async (forcePin: boolean) => { },
     hasEmailHash: async () => false,
     isLoading: false,
+    setIsLoading: (value: boolean) => { }
 })
 
 export function useAuth() {
@@ -48,6 +50,28 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const [authState, setAuthState] = useStorageState<AuthState>('authState', initialAuthState);
     const [isLoading, setIsLoading] = useStorageState<boolean>('isLoading', false);
     const auth = AuthenticationService.getInstance();
+
+    useEffect(() => {
+        // No setup needed on mount
+
+        // Cleanup function that runs when component unmounts
+        return () => {
+            // Only sign out if they were authenticated
+            if (authState.isAuthenticated) {
+                // We can't use async directly in the cleanup function
+                const performCleanup = async () => {
+                    try {
+                        console.log("Executing")
+                        await signOut();
+                    } catch (error) {
+                        console.error('Logout during cleanup failed:', error);
+                    }
+                };
+
+                performCleanup();
+            }
+        };
+    }, []);
 
     /**
      * Sets pinRegistered value to true, indiciating PIN is setup
@@ -146,6 +170,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
             await auth.deAuthorize();
             setAuthState({
                 ...authState,
+                isAuthenticated: false,
                 oidcRegistered: false,
                 idToken: null,
             });
@@ -182,6 +207,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
                 setForcePin,
                 hasEmailHash,
                 isLoading,
+                setIsLoading,
             }}>
             {children}
         </AuthContext.Provider>

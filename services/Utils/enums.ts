@@ -9,7 +9,8 @@ export enum storedValueKeys {
     METADATA_STORAGE_KEY = 'issuer_metadata',
     CODE_VERIFIER_KEY = 'code_verifier',
     STATE_KEY = 'auth_state',
-    VERIFIER_CLIENT_ID_KEY = 'verifier_id'
+    VERIFIER_CLIENT_ID_KEY = 'verifier_id',
+    DB_ENC_KEY = 'dbEncryptionKey'
 }
 
 export enum constants {
@@ -18,4 +19,5 @@ export enum constants {
     PRES_PATH = 'presentation-callback',
     ISSUER_URL = 'https://issuer.eudiw.dev',
     EU_ISSUER_CLIENT_ID = 'ID',
+    DBNAME = 'trinwallet_database.db',
 }

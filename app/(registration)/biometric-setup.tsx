@@ -1,5 +1,5 @@
-import { StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { biometricAvailability } from '../../services/Authentication';
+import { StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { biometricAvailability } from '../../services/authentication';
 import * as LocalAuthentication from 'expo-local-authentication';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -24,7 +24,10 @@ const theme = {
 
 export default function BiometricSetup() {
     const [biometricType, setBiometricType] = useState<'face' | 'fingerprint' | null>(null);
-    const { signIn, biometricSetup, isLoading } = useAuth();
+    const { signIn, biometricSetup, isLoading, setIsLoading } = useAuth();
+    useEffect(() => {
+        setIsLoading(false);
+    }, [])
 
     const checkBiometricSupport = async () => {
         const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
@@ -42,10 +45,15 @@ export default function BiometricSetup() {
     const handleEnableBiometrics = async () => {
         const biometricStatus = await biometricAvailability();
         if (biometricStatus.isAvailable) {
-            const success = await signIn(null);
-            if (success) {
-                await biometricSetup();
-                router.replace('/login');
+            try {
+                const success = await signIn(null);
+                console.log("Executed past sign in")
+                if (success) {
+                    await biometricSetup();
+                    router.replace('/login');
+                }
+            } catch (error) {
+                console.error("Error allowing biometrics: ", error)
             }
         } else {
             Alert.alert(
@@ -67,44 +75,52 @@ export default function BiometricSetup() {
             colors={[theme.dark, theme.background]}
             style={styles.container}
         >
-            <Animatable.View 
-                animation="fadeIn" 
-                duration={1000} 
+            <Animatable.View
+                animation="fadeIn"
+                duration={1000}
+                useNativeDriver={true}
                 style={styles.content}
             >
-                <Animatable.Text 
+                <Animatable.Text
                     animation="fadeInDown"
                     delay={500}
+                    useNativeDriver={true}
                     style={styles.title}
                 >
                     Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
                 </Animatable.Text>
 
-                <Animatable.Text 
+                <Animatable.Text
                     animation="fadeInDown"
                     delay={700}
+                    useNativeDriver={true}
                     style={styles.subtitle}
                 >
                     Use Biometrics for quick and secure access to your wallet
                 </Animatable.Text>
 
-                <Animatable.View
-                    animation="fadeInUp"
-                    delay={1000}
-                >
-                    <TouchableOpacity
-                        onPress={handleEnableBiometrics}
+                {isLoading ? (
+                    <ActivityIndicator size="large" color={theme.primary} style={styles.loader} />
+                ) : (
+                    <Animatable.View
+                        animation="fadeInUp"
+                        delay={1000}
+                        useNativeDriver={true}
                     >
-                        <LinearGradient
-                            colors={[theme.primary, theme.primaryDark]}
-                            style={styles.button}
+                        <TouchableOpacity
+                            onPress={handleEnableBiometrics}
                         >
-                            <Text style={styles.buttonText}>
-                                Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
-                            </Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </Animatable.View>
+                            <LinearGradient
+                                colors={[theme.primary, theme.primaryDark]}
+                                style={styles.button}
+                            >
+                                <Text style={styles.buttonText}>
+                                    Enable {biometricType === 'face' ? 'Face ID' : 'Touch ID'}
+                                </Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    </Animatable.View>
+                )}
             </Animatable.View>
         </LinearGradient>
     );
@@ -135,6 +151,9 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         paddingHorizontal: 20,
         lineHeight: 24,
+    },
+    loader: {
+        marginVertical: 30,
     },
     button: {
         paddingHorizontal: 30,

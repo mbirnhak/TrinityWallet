@@ -1,30 +1,57 @@
 // services/Transaction/credentialIssuance.ts
+import { JWK } from 'react-native-quick-crypto/lib/typescript/src/keys';
+import { storedValueKeys, constants } from '@/services/Utils/enums';
+import { createSdJwt, SdJwt } from '../Credentials/SdJwtVc';
+import { CredentialStorage } from '../credentialStorage';
+import { getDbEncryptionKey } from '../Utils/crypto';
 import * as SecureStore from 'expo-secure-store';
 import * as Linking from 'expo-linking';
-import { Alert } from 'react-native';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
 import * as Crypto from 'expo-crypto';
+import { Alert } from 'react-native';
 import base64url from 'base64url';
-import { CredentialStorage } from '../credentialStorageTemp';
-import { createSdJwt, SdJwt } from '../Credentials/SdJwtVc';
-import { JWK } from 'react-native-quick-crypto/lib/typescript/src/keys';
-import { storedValueKeys, constants } from '@/services/Utils/enums'
 
 // Constants
 const REDIRECT_URI = `${constants.DEEP_LINK_PREFIX}${constants.ISS_PATH}`;
 
-interface CredentialRequest {
+type CredentialRequestByIdentifier = {
     credential_identifier: string;
-    format?: string;
-    vct?: string;
+    format?: never;
+    vct?: never;
+    doctype?: never;
     proof: {
         proof_type: string;
         jwt: string;
     };
-}
+};
 
-interface BatchRequest {
+type CredentialRequestSdJwt = {
+    credential_identifier?: never;
+    format: string;
+    vct: string;
+    doctype?: never;
+    proof: {
+        proof_type: string;
+        jwt: string;
+    };
+};
+
+type CredentialRequestMdoc = {
+    credential_identifier?: never;
+    format: string;
+    vct?: never;
+    doctype: string;
+    proof: {
+        proof_type: string;
+        jwt: string;
+    };
+};
+
+type CredentialRequest =
+    | CredentialRequestByIdentifier
+    | CredentialRequestSdJwt
+    | CredentialRequestMdoc;
+
+type BatchRequest = {
     credential_requests: CredentialRequest[];
 }
 
@@ -54,8 +81,8 @@ async function generatePKCE() {
     const hash = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, data);
     const challenge = base64url.encode(Buffer.from(hash));
 
-    console.log('[PKCE] Code verifier generated:', verifier.slice(0, 10) + '...');
-    console.log('[PKCE] Code challenge generated:', challenge.slice(0, 10) + '...');
+    console.log('[PKCE] Code verifier generated');
+    console.log('[PKCE] Code challenge generated');
 
     await SecureStore.setItemAsync(storedValueKeys.CODE_VERIFIER_KEY, verifier);
 
@@ -233,14 +260,14 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
  */
 async function generateJWTProof(nonce?: string): Promise<{ jwt: string, sdJwt: SdJwt }> {
     try {
-        console.log('[Step 5] Generating JWT proof with nonce:', nonce);
+        console.log('[Step 5] Generating JWT proof with nonce');
         const sdJwt = await createSdJwt();
         // Generate a key pair for signing
         const { privateKey, publicKey } = sdJwt.getKeyPair();
         SecureStore.setItemAsync("pub-key", JSON.stringify(publicKey));
         SecureStore.setItemAsync("priv-key", JSON.stringify(privateKey));
-        console.log("Public Key Generated: ", publicKey)
-        console.log("Private Key Generated: ", privateKey)
+        console.log("Public Key Generated")
+        console.log("Private Key Generated")
         // const kid = await jose.calculateJwkThumbprint(publicKey as JWK);  // Use kid instead of embedding key
         const header = {
             typ: "openid4vci-proof+jwt",
@@ -266,7 +293,7 @@ async function generateJWTProof(nonce?: string): Promise<{ jwt: string, sdJwt: S
         }
         const encodedSignature = base64url(signature);
         const jwt = `${signingInput}.${encodedSignature}`;
-        console.log('[Step 5] Generated JWT:', jwt);
+        console.log('[Step 5] Generated JWT');
 
         return { jwt, sdJwt };
     } catch (error) {
@@ -275,54 +302,126 @@ async function generateJWTProof(nonce?: string): Promise<{ jwt: string, sdJwt: S
     }
 }
 
+async function generateCredentialRequest(authDetails: Record<string, string>[]) {
+    if (authDetails.length < 1) {
+        console.log("No credentials in auth details");
+        return null;
+    }
+    let requests = [];
+    for (const credential of authDetails) {
+        const { jwt } = await generateJWTProof();
+        const identifier = credential?.credential_configuration_id;
+        const vct = credential?.vct;
+        const docType = credential?.doctype;
+        const format = credential?.format;
+        let request: CredentialRequest;
+        if (identifier) {
+            request = {
+                credential_identifier: identifier,
+                proof: {
+                    proof_type: "jwt",
+                    jwt: jwt
+                }
+            }
+        } else if (vct) {
+            request = {
+                format: format,
+                vct: "urn:eu.europa.ec.eudi:pid:1",
+                // credential_identifier: vct,
+                proof: {
+                    proof_type: "jwt",
+                    jwt: jwt
+                }
+            }
+        } else {
+            request = {
+                format: format,
+                doctype: docType,
+                proof: {
+                    proof_type: "jwt",
+                    jwt: jwt
+                }
+            }
+        }
+        requests.push(request);
+    }
+    // If theres only one credential, return it as a CredentialRequest
+    if (requests.length == 1) {
+        return requests[0];
+    } else { // If more than one credential, create a BatchRequest and return it
+        const batchRequest: BatchRequest = {
+            credential_requests: requests
+        };
+        return batchRequest;
+    }
+}
+
 /**
  * Step 6: Request credential using access token
  */
-async function requestCredentialWithToken(accessToken: string, authDetails: any): Promise<CredentialResponse> {
+async function requestCredentialWithToken(accessToken: string, authDetails: Record<string, string>[]): Promise<CredentialResponse> {
+    // Setup credential storage instance
+    const dbEncryptionKey = await getDbEncryptionKey();
+    const storage = new CredentialStorage(dbEncryptionKey);
+
+    const num_credentials = authDetails.length;
+    console.log("Auth Details: ", authDetails);
+    console.log("Num Credentials: ", num_credentials);
+
     try {
         console.log('[Step 6] ====== Starting Batch Credential Request Flow ======');
 
         // Step 6.1: Create Initial JWT proof without nonce
         console.log('[Step 6.1] Generating initial JWT proof...');
-        const { jwt, sdJwt } = await generateJWTProof();
 
-        // Step 6.2: Initial batch request with proof
-        const initialBatchRequest: BatchRequest = {
-            credential_requests: [
-                {
-                    credential_identifier: "eu.europa.ec.eudi.pid_jwt_vc_json",
-                    format: "vc+sd-jwt",
-                    proof: {
-                        proof_type: "jwt",
-                        jwt: jwt
-                    }
+        // Step 6.2: Generate credential request with proof (batch request if multiple are requested)
+        const request = await generateCredentialRequest(authDetails);
+        console.log("REQUEST: ", request);
+        let response;
+        if (num_credentials == 1) {
+            response = await fetch(`${constants.ISSUER_URL}/credential`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
                 },
-                {
-                    credential_identifier: "eu.europa.ec.eudi.pid_mdoc",
-                    proof: {
-                        proof_type: "jwt",
-                        jwt: jwt
-                    }
-                }
-            ]
-        };
+                body: JSON.stringify(request)
+            });
+        } else {
+            response = await fetch(`${constants.ISSUER_URL}/batch_credential`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify(request)
+            });
+        }
 
-        const batchResponse = await fetch(`${constants.ISSUER_URL}/batch_credential`, {
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[Step 6.2] Initial batch request failed:', errorText);
+            throw new Error(`Initial batch request failed with status: ${response.status}`);
+        }
+        const responseData = await response.json();
+        console.log("Response Data: ", responseData);
+
+        const notification_data = {
+            notification_id: responseData.notification_id,
+            event: "error"
+        };
+        // Notification endpoint
+        const notification_response = await fetch(`${constants.ISSUER_URL}/notification`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${accessToken}`
             },
-            body: JSON.stringify(initialBatchRequest)
-        });
-
-        if (!batchResponse.ok) {
-            const errorText = await batchResponse.text();
-            console.error('[Step 6.2] Initial batch request failed:', errorText);
-            throw new Error(`Initial batch request failed with status: ${batchResponse.status}`);
-        }
-
-        const responseData = await batchResponse.json();
+            body: JSON.stringify(notification_data)
+        })
+        const notif_text = await notification_response.text();
+        console.log("Notification Response: ", notification_response);
 
         // Step 6.5: Store received credentials
         if (responseData.credential_responses?.length > 0) {
@@ -334,19 +433,11 @@ async function requestCredentialWithToken(accessToken: string, authDetails: any)
                 const credential = responseData.credential_responses[i].credential;
                 if (credential) {
                     try {
-                        const format = i === 0 ? 'jwt_vc' : 'mdoc';
-                        console.log(`[Step 6.5] Storing ${format} credential...`);
-                        if (i === 0) {
-                            const claims = await sdJwt.getClaims(credential);
-                            console.log('Credential Claims:', claims);
-                        }
-
-                        await CredentialStorage.storeCredential(
-                            format,
-                            credential
-                        );
-                        console.log(`[Step 6.5] Successfully stored ${format} credential`);
-                        storedCredentials.push(format);
+                        console.log(`[Step 6.5] Storing credential ${i}...`);
+                        const success = await storage.storeCredential(credential);
+                        console.log("Result of credential storage: ", success);
+                        console.log(`[Step 6.5] Successfully stored credential ${i}`);
+                        storedCredentials.push(i);
                     } catch (storageError) {
                         const errorMessage = `Error storing credential ${i}: ${storageError instanceof Error ? storageError.message : String(storageError)}`;
                         console.error('[Step 6.5]', errorMessage);
@@ -356,7 +447,6 @@ async function requestCredentialWithToken(accessToken: string, authDetails: any)
                     console.warn(`[Step 6.5] No credential data received for index ${i}`);
                 }
             }
-
             if (storageErrors.length > 0) {
                 console.warn('[Step 6.5] Completed with storage warnings:', storageErrors);
                 console.log('[Step 6.5] Successfully stored credentials:', storedCredentials);
@@ -366,15 +456,34 @@ async function requestCredentialWithToken(accessToken: string, authDetails: any)
                 console.warn('[Step 6.5] No credentials were stored');
             }
         } else {
-            console.warn('[Step 6.5] No credentials received in response');
+            if (responseData.credential) {
+                try {
+                    console.log(`[Step 6.5] Storing single credential...`);
+                    const success = await storage.storeCredential(responseData.credential);
+                    console.log("Result of credential storage: ", success);
+                    console.log(`[Step 6.5] Successfully stored credential`);
+                } catch (storageError) {
+                    const errorMessage = `Error storing credential: ${storageError instanceof Error ? storageError.message : String(storageError)}`;
+                    console.error('[Step 6.5]', errorMessage);
+                }
+            } else {
+                console.warn('[Step 6.5] No credentials received in response');
+            }
         }
 
+        // const cred_returned = await storage.retrieveCredentials();
+        // console.log("Credentials stored: ", cred_returned);
         console.log('[Step 6] ====== Batch Credential Request Flow Completed Successfully ======');
+
         return responseData;
     } catch (error) {
         console.error('[Step 6] ====== Error in Batch Credential Request Flow ======');
         console.error('[Step 6] Error details:', error);
         throw error;
+    } finally {
+        // Close the database connection here
+        storage.close();
+        console.log('[Step 6] Database connection closed');
     }
 }
 
@@ -397,39 +506,5 @@ export async function requestCredential() {
     } catch (error) {
         console.error('[Credential Request] Error:', error);
         Alert.alert('Error', 'Failed to initiate credential request');
-    }
-}
-
-/**
- * This function validates the callback URL received from the deep link handler
- *
- * @param url The URL received from the deep link handler
- * @returns True if the URL is valid, otherwise false
- */
-function isValidCallbackUrl(url: string): boolean {
-    try {
-        console.log('[Deep Link] Validating URL:', url);
-
-        // Parse the URL
-        const { scheme, hostname, path, queryParams } = Linking.parse(url);
-
-        console.log('[Deep Link] Parsed URL:', { scheme, hostname, path, queryParams });
-
-        // Check if it's our scheme
-        if (scheme !== 'trinwallet') {
-            console.log('[Deep Link] Invalid scheme:', scheme);
-            return false;
-        }
-
-        // Check for required parameters
-        if (!queryParams || !queryParams.code || !queryParams.state) {
-            console.log('[Deep Link] Missing required parameters');
-            return false;
-        }
-
-        return true;
-    } catch (error) {
-        console.error('[Deep Link] Error validating URL:', error);
-        return false;
     }
 }
