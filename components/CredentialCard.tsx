@@ -25,6 +25,21 @@ type CredentialCardProps = {
     isAvailable: boolean;
     timestamp?: string;
     onPress: () => void;
+    theme: {
+        dark: string;
+        darker: string;
+        primary: string;
+        primaryDark: string;
+        secondary: string;
+        accent: string;
+        text: string;
+        textSecondary: string;
+        surface: string;
+        border: string;
+        error: string;
+        success: string;
+        background: string;
+    }
 }
 
 const CredentialCard = ({ 
@@ -56,7 +71,12 @@ const CredentialCard = ({
         outputRange: [1, 1.02]
     });
 
-    const getCardColors = () => {
+    const getCardColors = (): {
+        colors: [string, string, ...string[]];
+        start: { x: number; y: number };
+        end: { x: number; y: number };
+        textColor: string;
+    } => {
         switch(type) {
             case 'jwt_vc':
                 // Metallic silver like Apple Card
