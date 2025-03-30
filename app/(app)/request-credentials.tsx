@@ -4,10 +4,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { router } from 'expo-router';
-import { theme } from './_layout';
+import { useTheme } from '@/context/ThemeContext';
 import { requestCredential } from '../../services/Transactions/credentialIssuance';
 
 export default function RequestCredentials() {
+  const { theme, isDarkMode } = useTheme();
   const [selectedCredentials, setSelectedCredentials] = useState({});
   const [loading, setLoading] = useState(false);
 
@@ -83,7 +84,11 @@ export default function RequestCredentials() {
     
     return (
       <TouchableOpacity
-        style={[styles.credentialCard, isSelected && styles.selectedCard]}
+        style={[
+          styles.credentialCard, 
+          { borderColor: isSelected ? theme.primary : theme.border },
+          isSelected && styles.selectedCard
+        ]}
         onPress={() => toggleCredentialSelection(credential.id)}
         activeOpacity={0.8}
       >
@@ -97,14 +102,16 @@ export default function RequestCredentials() {
             </View>
             
             <View style={styles.cardTextContainer}>
-              <Text style={styles.credentialName}>{credential.name}</Text>
-              <Text style={styles.credentialDescription}>{credential.description}</Text>
+              <Text style={[styles.credentialName, { color: theme.text }]}>{credential.name}</Text>
+              <Text style={[styles.credentialDescription, { color: theme.textSecondary }]}>{credential.description}</Text>
             </View>
             
             <View style={styles.checkboxContainer}>
               <View style={[
                 styles.checkbox, 
-                isSelected ? { backgroundColor: theme.primary } : { borderColor: theme.border }
+                isSelected ? 
+                  { backgroundColor: theme.primary } : 
+                  { borderColor: theme.border, backgroundColor: 'transparent' }
               ]}>
                 {isSelected && <Ionicons name="checkmark" size={16} color={theme.text} />}
               </View>
@@ -116,15 +123,15 @@ export default function RequestCredentials() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: theme.dark }]}>
+      <View style={[styles.header, { backgroundColor: theme.dark, borderBottomColor: theme.border }]}>
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => router.back()}
         >
           <Ionicons name="chevron-back" size={24} color={theme.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Request Credentials</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Request Credentials</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -138,8 +145,8 @@ export default function RequestCredentials() {
           duration={800} 
           style={styles.contentContainer}
         >
-          <Text style={styles.sectionTitle}>Select Credentials</Text>
-          <Text style={styles.instructionText}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Select Credentials</Text>
+          <Text style={[styles.instructionText, { color: theme.textSecondary }]}>
             Choose the credentials you would like to request. You can select multiple credentials.
           </Text>
 
@@ -154,7 +161,10 @@ export default function RequestCredentials() {
         </Animatable.View>
       </ScrollView>
 
-      <View style={styles.bottomContainer}>
+      <View style={[styles.bottomContainer, { 
+        borderTopColor: theme.border,
+        backgroundColor: theme.dark
+      }]}>
         <TouchableOpacity
           style={styles.requestButton}
           onPress={handleRequestCredentials}
@@ -164,7 +174,7 @@ export default function RequestCredentials() {
             colors={[theme.primary, theme.primaryDark]}
             style={styles.buttonGradient}
           >
-            <Text style={styles.buttonText}>
+            <Text style={[styles.buttonText, { color: theme.text }]}>
               {loading ? 'Requesting...' : 'Request Selected Credentials'}
             </Text>
             {!loading && <Ionicons name="arrow-forward" size={20} color={theme.text} />}
@@ -178,7 +188,6 @@ export default function RequestCredentials() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.dark,
   },
   header: {
     flexDirection: 'row',
@@ -188,8 +197,6 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-    backgroundColor: theme.dark,
   },
   backButton: {
     padding: 4,
@@ -197,7 +204,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: 'Poppins-Bold',
     fontSize: 18,
-    color: theme.text,
   },
   scrollView: {
     flex: 1,
@@ -211,13 +217,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'Poppins-Bold',
     fontSize: 20,
-    color: theme.text,
     marginBottom: 8,
   },
   instructionText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
-    color: theme.textSecondary,
     marginBottom: 24,
   },
   credentialsContainer: {
@@ -227,10 +231,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: theme.border,
   },
   selectedCard: {
-    borderColor: theme.primary,
     borderWidth: 2,
   },
   cardGradient: {
@@ -255,12 +257,10 @@ const styles = StyleSheet.create({
   credentialName: {
     fontFamily: 'Poppins-Bold',
     fontSize: 16,
-    color: theme.text,
   },
   credentialDescription: {
     fontFamily: 'Poppins-Regular',
     fontSize: 13,
-    color: theme.textSecondary,
     marginTop: 2,
   },
   checkboxContainer: {
@@ -277,7 +277,6 @@ const styles = StyleSheet.create({
   bottomContainer: {
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: theme.border,
   },
   requestButton: {
     borderRadius: 16,
@@ -295,6 +294,5 @@ const styles = StyleSheet.create({
   buttonText: {
     fontFamily: 'Poppins-Bold',
     fontSize: 16,
-    color: theme.text,
   }
 });

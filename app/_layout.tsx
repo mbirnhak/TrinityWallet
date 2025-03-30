@@ -1,11 +1,12 @@
 import { Stack } from 'expo-router';
 import { AuthProvider } from '@/context/AuthContext';
+import { ThemeProvider } from '@/context/ThemeContext';
 import * as Font from 'expo-font';
 import { AppState, AppStateStatus } from 'react-native';
 import { useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-// Theme colors for the entire app
+// Theme colors for the entire app - maintaining for backward compatibility
 export const theme = {
     dark: '#000000',
     darker: '#1C1C1E',
@@ -96,9 +97,11 @@ function AppStateListener() {
 
 export default function Root() {
   return (
-    <AuthProvider>
-      <AppStateListener />
-      <RootLayoutNav />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppStateListener />
+        <RootLayoutNav />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

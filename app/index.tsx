@@ -23,10 +23,19 @@ export default function Index() {
                 const pinRegistered = authState?.pinRegistered;
                 const biometricsRegistered = authState?.biometricsRegistered;
                 console.log("AuthState: ", authState);
+                
+                // Route logic based on registration status
                 if (oidcRegistered && pinRegistered && biometricsRegistered) {
                     router.replace('/login');
-                } else {
+                } else if (oidcRegistered && !pinRegistered) {
+                    // If Microsoft auth is done but PIN isn't set up, direct to PIN setup
+                    router.replace('/pin-setup');
+                } else if (!oidcRegistered) {
+                    // Start with Microsoft authentication if not registered
                     router.replace('/openId');
+                } else if (oidcRegistered && pinRegistered && !biometricsRegistered) {
+                    // If PIN is registered but biometrics isn't, go to biometric setup
+                    router.replace('/biometric-setup');
                 }
             };
 

@@ -1,10 +1,12 @@
-import { View, ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { View, ScrollView, StyleSheet, Text, TouchableOpacity, SafeAreaView, StatusBar, Platform } from 'react-native';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { Href, router } from 'expo-router';
-import { theme } from './_layout';
+import { useTheme } from '@/context/ThemeContext';
+import { BlurView } from 'expo-blur';
+import CommonHeader from '../../components/Header';
 
 // Define types for the icon names
 type IconiconsProps = React.ComponentProps<typeof Ionicons>;
@@ -31,6 +33,7 @@ const PLACEHOLDER_LOGS: LogItem[] = [
 ];
 
 export default function Dashboard() {
+  const { theme, isDarkMode } = useTheme();
   const [recentLogs, setRecentLogs] = useState<LogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -79,9 +82,9 @@ export default function Dashboard() {
     <View style={styles.categoryHeader}>
       <View style={styles.categoryTitleContainer}>
         <Ionicons name={icon} size={20} color={theme.primary} />
-        <Text style={styles.categoryTitle}>{title}</Text>
+        <Text style={[styles.categoryTitle, { color: theme.text }]}>{title}</Text>
       </View>
-      <View style={styles.categoryDivider} />
+      <View style={[styles.categoryDivider, { backgroundColor: theme.border }]} />
     </View>
   );
 
@@ -109,7 +112,7 @@ export default function Dashboard() {
           {iconProvider === 'MaterialIcons' && <MaterialIcons name={icon as MaterialIconsProps['name']} size={24} color={color} />}
           {iconProvider === 'MaterialCommunityIcons' && <MaterialCommunityIcons name={icon as MaterialCommunityIconsProps['name']} size={24} color={color} />}
         </View>
-        <Text style={styles.actionTitle}>{title}</Text>
+        <Text style={[styles.actionTitle, { color: theme.text }]}>{title}</Text>
       </LinearGradient>
     </TouchableOpacity>
   );
@@ -124,7 +127,7 @@ export default function Dashboard() {
     <Animatable.View
       animation="fadeIn"
       duration={500}
-      style={styles.logItem}
+      style={[styles.logItem, { borderBottomColor: theme.border }]}
     >
       <View style={styles.logIconContainer}>
         <View style={[
@@ -139,14 +142,14 @@ export default function Dashboard() {
         </View>
       </View>
       <View style={styles.logContent}>
-        <Text style={styles.logTitle}>
+        <Text style={[styles.logTitle, { color: theme.text }]}>
           {log.type === 'issuance' ? 'Issued: ' :
             log.type === 'presentation' ? 'Presented: ' :
               log.type === 'access' ? 'Accessed: ' :
                 log.type === 'transaction' ? 'Transaction: ' : ''}
-          <Text style={styles.logHighlight}>{log.credential}</Text>
+          <Text style={[styles.logHighlight, { color: theme.primary }]}>{log.credential}</Text>
         </Text>
-        <Text style={styles.logTime}>
+        <Text style={[styles.logTime, { color: theme.textSecondary }]}>
           {log.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {log.date.toLocaleDateString()}
         </Text>
       </View>
@@ -161,167 +164,150 @@ export default function Dashboard() {
   );
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <Animatable.View
-        animation="fadeIn"
-        duration={1000}
-        style={styles.contentContainer}
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.dark }]}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={theme.dark} />
+      <ScrollView
+        style={[styles.container, { backgroundColor: theme.dark }]}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <LinearGradient
-          colors={['rgba(10, 132, 255, 0.1)', 'transparent']}
-          style={styles.gradientHeader}
+        <CommonHeader title="Trinity Wallet" />
+        
+        <Animatable.View
+          animation="fadeIn"
+          duration={1000}
+          style={styles.contentContainer}
         >
-          <Text style={styles.welcomeText}>Trinity Wallet</Text>
-          <Text style={styles.subtitleText}>Secure Digital Identity</Text>
-        </LinearGradient>
-
-        {/* Credentials & Wallet Section */}
-        <SectionHeader title="Credentials & Wallet" icon="card-outline" />
-        <View style={styles.actionsGrid}>
-          <ActionButton
-            icon="key"
-            title="Request Credentials"
-            onPress={() => navigateTo('/request-credentials')}
-          />
-          <ActionButton
-            icon="id-card"
-            title="Present Credentials"
-            onPress={() => navigateTo('/present-credentials')}
-            color={theme.accent}
-          />
-          <ActionButton
-            icon="wallet"
-            title="Credentials"
-            onPress={() => router.navigate('/(app)/credentials')}
-            color="#FF9500" // Apple's orange
-          />
-          <ActionButton
-            icon="create"
-            title="E-Signature"
-            onPress={() => alert('Coming soon')}
-            color="#5E5CE6" // Apple's purple
-          />
-        </View>
-
-        {/* Transactions & Access Section */}
-        <SectionHeader title="Transactions & Access" icon="swap-horizontal-outline" />
-        <View style={styles.actionsGrid}>
-          <ActionButton
-            icon="meeting-room"
-            title="Unlock Door"
-            onPress={() => alert('Door unlocked successfully')}
-            color="#FF375F" // Apple's pink
-            iconProvider="MaterialIcons"
-          />
-          <ActionButton
-            icon="book"
-            title="Issue Book"
-            onPress={() => alert('Book issued successfully')}
-            color="#30D158" // Apple's green
-          />
-        </View>
-
-        {/* Security & Backup Section */}
-        <SectionHeader title="Security & Backup" icon="shield-checkmark-outline" />
-        <View style={styles.actionsGrid}>
-          <ActionButton
-            icon="cloud-upload"
-            title="Backup"
-            onPress={() => alert('Backup feature will be available soon')}
-            color="#64D2FF" // Apple's blue
-          />
-          <ActionButton
-            icon="cloud-download"
-            title="Restore"
-            onPress={() => alert('Restore feature will be available soon')}
-            color="#30D158" // Apple's green
-          />
-        </View>
-
-        <View style={styles.logsContainer}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Ionicons name="time-outline" size={22} color={theme.primary} />
-              <Text style={styles.sectionTitle}>Recent Activity</Text>
+          {/* Main content with tighter spacing */}
+          <View style={styles.mainContent}>
+            {/* Credentials & Wallet Section */}
+            <SectionHeader title="Credentials & Wallet" icon="card-outline" />
+            <View style={styles.actionsGrid}>
+              <ActionButton
+                icon="key"
+                title="Request Credentials"
+                onPress={() => navigateTo('/request-credentials')}
+              />
+              <ActionButton
+                icon="id-card"
+                title="Present Credentials"
+                onPress={() => navigateTo('/present-credentials')}
+                color={theme.accent}
+              />
+              <ActionButton
+                icon="wallet"
+                title="Credentials"
+                onPress={() => router.navigate('/(app)/credentials')}
+                color="#FF9500" // Apple's orange
+              />
+              <ActionButton
+                icon="create"
+                title="E-Signature"
+                onPress={() => alert('Coming soon')}
+                color="#5E5CE6" // Apple's purple
+              />
             </View>
-            <TouchableOpacity onPress={() => navigateTo('/logs')}>
-              <Text style={styles.viewAllText}>View All</Text>
-            </TouchableOpacity>
+
+            {/* Transactions & Access Section */}
+            <SectionHeader title="Transactions & Access" icon="swap-horizontal-outline" />
+            <View style={styles.actionsGrid}>
+              <ActionButton
+                icon="meeting-room"
+                title="Unlock Door"
+                onPress={() => alert('Door unlocked successfully')}
+                color="#FF375F" // Apple's pink
+                iconProvider="MaterialIcons"
+              />
+              <ActionButton
+                icon="book"
+                title="Library Rental"
+                onPress={() => alert('Book issued successfully')}
+                color="#30D158" // Apple's green
+              />
+            </View>
+
+            {/* Security & Backup Section */}
+            <SectionHeader title="Security & Backup" icon="shield-checkmark-outline" />
+            <View style={styles.actionsGrid}>
+              <ActionButton
+                icon="cloud-upload"
+                title="Backup"
+                onPress={() => alert('Backup feature will be available soon')}
+                color="#64D2FF" // Apple's blue
+              />
+              <ActionButton
+                icon="cloud-download"
+                title="Restore"
+                onPress={() => alert('Restore feature will be available soon')}
+                color="#30D158" // Apple's green
+              />
+            </View>
+
+            <View style={[styles.logsContainer, { backgroundColor: theme.darker, borderColor: theme.border }]}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <Ionicons name="time-outline" size={22} color={theme.primary} />
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Activity</Text>
+                </View>
+                <TouchableOpacity onPress={() => navigateTo('/logs')}>
+                  <Text style={[styles.viewAllText, { color: theme.primary }]}>View All</Text>
+                </TouchableOpacity>
+              </View>
+
+              {recentLogs.map(log => (
+                <LogItem key={log.id} log={log} />
+              ))}
+            </View>
           </View>
+        </Animatable.View>
 
-          {recentLogs.map(log => (
-            <LogItem key={log.id} log={log} />
-          ))}
-        </View>
-      </Animatable.View>
-
-      {/* Loading overlay */}
-      {isLoading && (
-        <View style={styles.loadingOverlay}>
-          <Animatable.View animation="pulse" easing="ease-out" iterationCount="infinite">
-            <Ionicons name="sync-outline" size={32} color={theme.primary} />
-          </Animatable.View>
-        </View>
-      )}
-    </ScrollView>
+        {/* Loading overlay */}
+        {isLoading && (
+          <View style={styles.loadingOverlay}>
+            <Animatable.View animation="pulse" easing="ease-out" iterationCount="infinite">
+              <Ionicons name="sync-outline" size={32} color={theme.primary} />
+            </Animatable.View>
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: theme.dark,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 30,
+    paddingBottom: 20,
   },
   contentContainer: {
     flexGrow: 1,
-    padding: 20,
-    paddingTop: 40,
+    paddingHorizontal: 16,
   },
-  gradientHeader: {
-    width: '100%',
-    paddingVertical: 20,
-    alignItems: 'center',
-    borderRadius: 15,
-    marginBottom: 30,
-  },
-  welcomeText: {
-    fontFamily: 'Poppins-Bold',
-    fontSize: 32,
-    color: theme.text,
-    textAlign: 'center',
-  },
-  subtitleText: {
-    fontFamily: 'Poppins-Regular',
-    fontSize: 16,
-    color: theme.textSecondary,
-    marginTop: 8,
+  mainContent: {
+    paddingHorizontal: 4,
   },
   categoryHeader: {
-    marginBottom: 15,
-    marginTop: 5,
+    marginBottom: 10,
+    marginTop: 10,
   },
   categoryTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   categoryTitle: {
     fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
-    color: theme.text,
     marginLeft: 8,
   },
   categoryDivider: {
     height: 1,
-    backgroundColor: theme.border,
     width: '100%',
     opacity: 0.3,
   },
@@ -329,46 +315,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 25,
+    marginBottom: 16,
   },
   actionButton: {
     width: '48%',
-    marginBottom: 16,
+    marginBottom: 12,
     borderRadius: 16,
     overflow: 'hidden',
   },
   actionGradient: {
-    padding: 15,
+    padding: 14,
     borderRadius: 16,
     alignItems: 'center',
   },
   iconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   actionTitle: {
     fontFamily: 'Poppins-Bold',
     fontSize: 14,
-    color: theme.text,
     textAlign: 'center',
   },
   logsContainer: {
-    backgroundColor: theme.darker,
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     borderWidth: 1,
-    borderColor: theme.border,
-    marginTop: 10,
+    marginTop: 6,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionTitleContainer: {
     flexDirection: 'row',
@@ -377,28 +360,25 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'Poppins-Bold',
     fontSize: 18,
-    color: theme.text,
     marginLeft: 8,
   },
   viewAllText: {
     fontFamily: 'Poppins-Medium',
     fontSize: 14,
-    color: theme.primary,
   },
   logItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: theme.border,
   },
   logIconContainer: {
     marginRight: 12,
   },
   logIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -408,15 +388,13 @@ const styles = StyleSheet.create({
   logTitle: {
     fontFamily: 'Poppins-Medium',
     fontSize: 14,
-    color: theme.text,
   },
   logHighlight: {
-    color: theme.primary,
+    fontFamily: 'Poppins-Medium',
   },
   logTime: {
     fontFamily: 'Poppins-Regular',
     fontSize: 12,
-    color: theme.textSecondary,
     marginTop: 2,
   },
   logStatus: {

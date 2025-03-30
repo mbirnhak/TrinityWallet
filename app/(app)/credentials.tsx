@@ -1,13 +1,15 @@
-import { View, ScrollView, StyleSheet, Alert, Text, TouchableOpacity } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, Text, TouchableOpacity, SafeAreaView, StatusBar, Platform } from 'react-native';
 import { CredentialStorage, StoredCredential } from '../../services/credentialStorageTemp';
 import * as Animatable from 'react-native-animatable';
 import { useEffect, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import { theme } from './_layout';
 import { Ionicons } from '@expo/vector-icons';
 import CredentialCard from '../../components/CredentialCard';
+import { useTheme } from '@/context/ThemeContext';
+import CommonHeader from '../../components/Header';
 
 export default function Credentials() {
+  const { theme, isDarkMode } = useTheme();
   const [credentials, setCredentials] = useState<StoredCredential | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -63,113 +65,97 @@ export default function Credentials() {
   };
 
   return (
-    <ScrollView 
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <Animatable.View 
-        animation="fadeIn" 
-        duration={1000} 
-        style={styles.contentContainer}
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.dark }]}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={theme.dark} />
+      <ScrollView 
+        style={[styles.container, { backgroundColor: theme.dark }]}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <LinearGradient
-          colors={['rgba(10, 132, 255, 0.1)', 'transparent']}
-          style={styles.gradientHeader}
+        <CommonHeader title="Digital Credentials" />
+        
+        <Animatable.View 
+          animation="fadeIn" 
+          duration={1000} 
+          style={styles.contentContainer}
         >
-          <Text style={styles.welcomeText}>Digital Credentials</Text>
-          <Text style={styles.subtitleText}>
-            Your secure identity wallet
-          </Text>
-        </LinearGradient>
+          <View style={styles.mainContent}>
+            {credentials ? (
+              <Animatable.View 
+                animation="fadeInUp" 
+                duration={800} 
+                style={styles.credentialsContainer}
+              >
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleContainer}>
+                    <Ionicons name="wallet-outline" size={24} color={theme.primary} />
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Your Credentials</Text>
+                  </View>
+                  <TouchableOpacity onPress={handleRefresh}>
+                    <Ionicons name="refresh-outline" size={20} color={theme.primary} />
+                  </TouchableOpacity>
+                </View>
 
-        {credentials ? (
-          <Animatable.View 
-            animation="fadeInUp" 
-            duration={800} 
-            style={styles.credentialsContainer}
-          >
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleContainer}>
-                <Ionicons name="wallet-outline" size={24} color={theme.primary} />
-                <Text style={styles.sectionTitle}>Your Credentials</Text>
-              </View>
-              <TouchableOpacity onPress={handleRefresh}>
-                <Ionicons name="refresh-outline" size={20} color={theme.primary} />
-              </TouchableOpacity>
-            </View>
+                <CredentialCard
+                  type="jwt_vc"
+                  isAvailable={!!credentials.jwt_vc}
+                  timestamp={String(credentials.timestamp)}
+                  onPress={() => viewCredentialDetails('jwt_vc')}
+                  theme={theme}
+                />
+                
+                <CredentialCard
+                  type="mdoc"
+                  isAvailable={!!credentials.mdoc}
+                  timestamp={String(credentials.timestamp)}
+                  onPress={() => viewCredentialDetails('mdoc')}
+                  theme={theme}
+                />
 
-            <CredentialCard
-              type="jwt_vc"
-              isAvailable={!!credentials.jwt_vc}
-              timestamp={String(credentials.timestamp)}
-              onPress={() => viewCredentialDetails('jwt_vc')}
-            />
-            
-            <CredentialCard
-              type="mdoc"
-              isAvailable={!!credentials.mdoc}
-              timestamp={String(credentials.timestamp)}
-              onPress={() => viewCredentialDetails('mdoc')}
-            />
-
-            <View style={styles.infoContainer}>
-              <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />
-              <Text style={styles.infoText}>
-                Tap on a credential to expand and view details
-              </Text>
-            </View>
-          </Animatable.View>
-        ) : !loading && (
-          <Animatable.View 
-            animation="fadeIn" 
-            duration={800} 
-            style={styles.emptyStateContainer}
-          >
-            <Ionicons name="wallet-outline" size={48} color={theme.textSecondary} />
-            <Text style={styles.emptyStateText}>
-              No credentials issued yet
-            </Text>
-            <Text style={styles.emptyStateSubtext}>
-              Head to the Dashboard to request new credentials
-            </Text>
-          </Animatable.View>
-        )}
-      </Animatable.View>
-    </ScrollView>
+                <View style={[styles.infoContainer, { backgroundColor: theme.darker }]}>
+                  <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />
+                  <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+                    Tap on a credential to expand and view details
+                  </Text>
+                </View>
+              </Animatable.View>
+            ) : !loading && (
+              <Animatable.View 
+                animation="fadeIn" 
+                duration={800} 
+                style={styles.emptyStateContainer}
+              >
+                <Ionicons name="wallet-outline" size={48} color={theme.textSecondary} />
+                <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>
+                  No credentials issued yet
+                </Text>
+                <Text style={[styles.emptyStateSubtext, { color: theme.textSecondary }]}>
+                  Head to the Dashboard to request new credentials
+                </Text>
+              </Animatable.View>
+            )}
+          </View>
+        </Animatable.View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: theme.dark,
   },
   scrollContent: {
     paddingBottom: 30,
   },
   contentContainer: {
-    padding: 20,
-    paddingTop: 40,
+    paddingHorizontal: 16,
   },
-  gradientHeader: {
-    width: '100%',
-    paddingVertical: 20,
-    alignItems: 'center',
-    borderRadius: 15,
-    marginBottom: 30,
-  },
-  welcomeText: {
-    fontFamily: 'Poppins-Bold',
-    fontSize: 28,
-    color: theme.text,
-    textAlign: 'center',
-  },
-  subtitleText: {
-    fontFamily: 'Poppins-Regular',
-    fontSize: 16,
-    color: theme.textSecondary,
-    marginTop: 8,
+  mainContent: {
+    paddingHorizontal: 4,
   },
   credentialsContainer: {
     width: '100%',
@@ -188,13 +174,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'Poppins-Bold',
     fontSize: 20,
-    color: theme.text,
     marginLeft: 8,
   },
   infoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.darker,
     padding: 12,
     borderRadius: 12,
     marginTop: 16,
@@ -203,7 +187,6 @@ const styles = StyleSheet.create({
   infoText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
-    color: theme.textSecondary,
     marginLeft: 8,
   },
   emptyStateContainer: {
@@ -215,14 +198,12 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontFamily: 'Poppins-Medium',
     fontSize: 18,
-    color: theme.textSecondary,
     marginTop: 16,
     textAlign: 'center',
   },
   emptyStateSubtext: {
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
-    color: theme.textSecondary,
     marginTop: 8,
     marginBottom: 24,
     textAlign: 'center',

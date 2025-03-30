@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useMemo } from 'react';
 import { router } from 'expo-router';
-import { theme } from './_layout';
+import { useTheme } from '@/context/ThemeContext';
 
 // Log entry type definition
 type LogEntry = {
@@ -33,6 +33,7 @@ const PLACEHOLDER_LOGS: LogEntry[] = [
 ];
 
 export default function Logs() {
+  const { theme, isDarkMode } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<Record<string, boolean>>({
     issuance: true,
@@ -122,7 +123,7 @@ export default function Logs() {
     <Animatable.View 
       animation="fadeIn" 
       duration={300}
-      style={styles.logItem}
+      style={[styles.logItem, { borderColor: theme.border, backgroundColor: theme.darker }]}
     >
       <View style={styles.logHeader}>
         <View style={styles.logIconContainer}>
@@ -139,13 +140,13 @@ export default function Logs() {
         </View>
         
         <View style={styles.logTitleContainer}>
-          <Text style={styles.logTitle}>
-            <Text style={styles.logType}>
+          <Text style={[styles.logTitle, { color: theme.text }]}>
+            <Text style={[styles.logType, { color: theme.primary }]}>
               {item.type.charAt(0).toUpperCase() + item.type.slice(1)}:
             </Text> {item.credential}
           </Text>
           
-          <Text style={styles.logDate}>
+          <Text style={[styles.logDate, { color: theme.textSecondary }]}>
             {item.date.toLocaleDateString()} • {item.date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
           </Text>
         </View>
@@ -155,7 +156,7 @@ export default function Logs() {
             styles.statusIndicator, 
             { backgroundColor: getStatusColor(item.status) }
           ]}>
-            <Text style={styles.statusText}>
+            <Text style={[styles.statusText, { color: theme.dark }]}>
               {item.status.toUpperCase()}
             </Text>
           </View>
@@ -163,7 +164,7 @@ export default function Logs() {
       </View>
       
       <View style={styles.logDetailsContainer}>
-        <Text style={styles.logDetails}>{item.details}</Text>
+        <Text style={[styles.logDetails, { color: theme.textSecondary }]}>{item.details}</Text>
       </View>
     </Animatable.View>
   );
@@ -183,13 +184,14 @@ export default function Logs() {
     <TouchableOpacity
       style={[
         styles.filterPill, 
-        isActive && { backgroundColor: color + '30', borderColor: color }
+        { borderColor: isActive ? color : theme.border },
+        isActive && { backgroundColor: color + '30' }
       ]}
       onPress={onPress}
     >
       <Text style={[
         styles.filterPillText, 
-        isActive && { color }
+        { color: isActive ? color : theme.textSecondary }
       ]}>
         {label}
       </Text>
@@ -197,23 +199,23 @@ export default function Logs() {
   );
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: theme.dark }]}>
+      <View style={[styles.header, { backgroundColor: theme.dark }]}>
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => router.back()}
         >
           <Ionicons name="chevron-back" size={24} color={theme.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Activity Logs</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Activity Logs</Text>
         <View style={{ width: 24 }} />
       </View>
 
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
+      <View style={[styles.searchContainer, { borderBottomColor: theme.border }]}>
+        <View style={[styles.searchInputContainer, { backgroundColor: theme.darker, borderColor: theme.border }]}>
           <Ionicons name="search" size={18} color={theme.textSecondary} style={styles.searchIcon} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: theme.text }]}
             placeholder="Search logs..."
             placeholderTextColor={theme.textSecondary}
             value={searchQuery}
@@ -227,8 +229,8 @@ export default function Logs() {
         </View>
       </View>
       
-      <View style={styles.filtersContainer}>
-        <Text style={styles.filterLabel}>Transaction Type:</Text>
+      <View style={[styles.filtersContainer, { borderBottomColor: theme.border }]}>
+        <Text style={[styles.filterLabel, { color: theme.text }]}>Transaction Type:</Text>
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
@@ -266,7 +268,7 @@ export default function Logs() {
           />
         </ScrollView>
         
-        <Text style={styles.filterLabel}>Status:</Text>
+        <Text style={[styles.filterLabel, { color: theme.text }]}>Status:</Text>
         <View style={styles.statusFilters}>
           <FilterPill 
             label="Success" 
@@ -300,8 +302,8 @@ export default function Logs() {
       ) : (
         <View style={styles.emptyState}>
           <Ionicons name="document-text-outline" size={48} color={theme.textSecondary} />
-          <Text style={styles.emptyStateText}>No logs found</Text>
-          <Text style={styles.emptyStateSubtext}>
+          <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>No logs found</Text>
+          <Text style={[styles.emptyStateSubtext, { color: theme.textSecondary }]}>
             Try adjusting your filters or search query
           </Text>
         </View>
@@ -313,7 +315,6 @@ export default function Logs() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.dark,
   },
   header: {
     flexDirection: 'row',
@@ -322,7 +323,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 60,
     paddingBottom: 16,
-    backgroundColor: theme.dark,
   },
   backButton: {
     padding: 4,
@@ -330,23 +330,19 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: 'Poppins-Bold',
     fontSize: 18,
-    color: theme.text,
   },
   searchContainer: {
     paddingHorizontal: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: theme.border,
   },
   searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.darker,
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 44,
     borderWidth: 1,
-    borderColor: theme.border,
   },
   searchIcon: {
     marginRight: 8,
@@ -354,7 +350,6 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     height: '100%',
-    color: theme.text,
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
   },
@@ -362,12 +357,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: theme.border,
   },
   filterLabel: {
     fontFamily: 'Poppins-Medium',
     fontSize: 14,
-    color: theme.text,
     marginBottom: 8,
   },
   filterPills: {
@@ -381,13 +374,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: theme.border,
     marginRight: 8,
   },
   filterPillText: {
     fontFamily: 'Poppins-Medium',
     fontSize: 12,
-    color: theme.textSecondary,
   },
   statusFilters: {
     flexDirection: 'row',
@@ -399,18 +390,16 @@ const styles = StyleSheet.create({
   },
   logItem: {
     marginBottom: 16,
-    backgroundColor: theme.darker,
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: theme.border,
   },
   logHeader: {
     flexDirection: 'row',
     padding: 12,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: theme.border,
+    borderBottomColor: '#333333',
   },
   logIconContainer: {
     marginRight: 12,
@@ -428,16 +417,13 @@ const styles = StyleSheet.create({
   logTitle: {
     fontFamily: 'Poppins-Medium',
     fontSize: 14,
-    color: theme.text,
   },
   logType: {
     fontFamily: 'Poppins-Bold',
-    color: theme.primary,
   },
   logDate: {
     fontFamily: 'Poppins-Regular',
     fontSize: 12,
-    color: theme.textSecondary,
     marginTop: 2,
   },
   statusContainer: {
@@ -451,7 +437,6 @@ const styles = StyleSheet.create({
   statusText: {
     fontFamily: 'Poppins-Bold',
     fontSize: 10,
-    color: theme.dark,
   },
   logDetailsContainer: {
     padding: 12,
@@ -459,7 +444,6 @@ const styles = StyleSheet.create({
   logDetails: {
     fontFamily: 'Poppins-Regular',
     fontSize: 13,
-    color: theme.textSecondary,
     lineHeight: 18,
   },
   emptyState: {
@@ -471,13 +455,11 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontFamily: 'Poppins-Medium',
     fontSize: 18,
-    color: theme.textSecondary,
     marginTop: 16,
   },
   emptyStateSubtext: {
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
-    color: theme.textSecondary,
     marginTop: 8,
     opacity: 0.8,
   },

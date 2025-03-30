@@ -16,6 +16,8 @@ interface BiometricCheckResult {
     hasHardware: boolean;
     isEnrolled: boolean;
     shouldConfigureSettings: boolean;
+    biometricType?: 'face' | 'fingerprint' | 'unknown';
+    error?: string;
 }
 
 export interface AuthState {
@@ -42,21 +44,40 @@ const OPENID_CONFIG = {
 };
 
 /**
-     * Checks availability to use biometrics.
-     * 
-     * @returns true if biomeitrc are enrolled, available, and user has consented to use them, 
-     * otherwise it returns false.
-     */
+ * Checks availability to use biometrics.
+ * 
+ * @returns BiometricCheckResult with detailed information about biometric availability
+ */
 export async function biometricAvailability(): Promise<BiometricCheckResult> {
     try {
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
         
+        // If device has biometric hardware, determine what type it is
+        let biometricType: 'face' | 'fingerprint' | 'unknown' = 'unknown';
+        
+        if (hasHardware) {
+            try {
+                const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+                
+                if (types && types.length > 0) {
+                    if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+                        biometricType = 'face';
+                    } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+                        biometricType = 'fingerprint';
+                    }
+                }
+            } catch (typeError) {
+                console.error('Error determining biometric type:', typeError);
+            }
+        }
+        
         return {
             isAvailable: hasHardware && isEnrolled,
             hasHardware,
             isEnrolled,
-            shouldConfigureSettings: !hasHardware || !isEnrolled
+            shouldConfigureSettings: !hasHardware || !isEnrolled,
+            biometricType
         };
     } catch (error) {
         console.error('Error checking biometric availability:', error);
@@ -64,7 +85,8 @@ export async function biometricAvailability(): Promise<BiometricCheckResult> {
             isAvailable: false,
             hasHardware: false,
             isEnrolled: false,
-            shouldConfigureSettings: true
+            shouldConfigureSettings: true,
+            error: error instanceof Error ? error.message : 'Unknown error checking biometrics'
         };
     }
 }
@@ -83,6 +105,7 @@ class AuthenticationService {
         forcePin: false,
     };
     private lastAuthMethod: 'PIN' | 'BIOMETRIC' | null = null;
+    private authInProgress: boolean = false;
 
     private constructor() { }
 
@@ -211,21 +234,51 @@ class AuthenticationService {
      * it was unsuccesful, or an error occurred.
      */
     private async authenticateWithBiometrics(): Promise<boolean> {
+        // Prevent multiple authentication attempts at once
+        if (this.authInProgress) {
+            console.log('Authentication already in progress, please wait');
+            return false;
+        }
+        
+        this.authInProgress = true;
+        
         try {
+            // First check if biometrics are available
+            const biometricStatus = await biometricAvailability();
+            console.log('Biometric status before auth:', biometricStatus);
+            
+            if (!biometricStatus.isAvailable) {
+                console.log('Biometrics are not available:', biometricStatus);
+                this.authInProgress = false;
+                return false;
+            }
+            
+            // Customize prompt based on biometric type
+            const promptMessage = biometricStatus.biometricType === 'face' 
+                ? 'Authenticate with Face ID' 
+                : 'Authenticate with Touch ID';
+            
             const result = await LocalAuthentication.authenticateAsync({
-                promptMessage: 'Verify your identity',
+                promptMessage,
                 fallbackLabel: 'Use PIN instead',
-                // handle fallback using app PIN rather than device passcode
-                // disableDeviceFallback: true,
+                // Handle fallback properly
+                disableDeviceFallback: false,
+                cancelLabel: 'Cancel',
             });
+
+            console.log('Biometric authentication result:', result);
 
             if (result.success) {
                 this.lastAuthMethod = 'BIOMETRIC';
+                this.authInProgress = false;
                 return true;
             }
+            
+            this.authInProgress = false;
             return false;
         } catch (error) {
             console.error('Biometric authentication error:', error);
+            this.authInProgress = false;
             return false;
         }
     }
@@ -240,6 +293,7 @@ class AuthenticationService {
         try {
             // Authenticates with biometrics if no pin provided
             if (!pin) {
+                console.log('Attempting biometric authentication');
                 const biometricSuccess = await this.authenticateWithBiometrics();
                 if (biometricSuccess) {
                     this.authState.isAuthenticated = true;
@@ -249,14 +303,24 @@ class AuthenticationService {
                     return false;
                 }
             } else {
+                console.log('Attempting PIN authentication');
                 // check PIN against stored hash
                 const storedHash = await SecureStore.getItemAsync(storedValueKeys.PIN);
-                if (!storedHash) return false;
+                if (!storedHash) {
+                    console.error('No PIN hash found');
+                    return false;
+                }
                 const pinMatches = await bcryptVerifyHash(pin, storedHash);
+                if (pinMatches) {
+                    this.lastAuthMethod = 'PIN';
+                    this.authState.isAuthenticated = true;
+                }
                 return pinMatches;
             }
         } catch (error) {
+            console.error('Authentication error:', error);
             this.authState.error = error instanceof Error ? error.message : 'Authentication failed';
+            this.authState.isAuthenticated = false;
             return false;
         }
     }
@@ -295,6 +359,16 @@ class AuthenticationService {
 
     getLastAuthMethod(): string | null {
         return this.lastAuthMethod;
+    }
+    
+    /**
+     * Get the type of biometric authentication available on the device
+     * 
+     * @returns 'face', 'fingerprint', or 'unknown'
+     */
+    async getBiometricType(): Promise<string> {
+        const biometricStatus = await biometricAvailability();
+        return biometricStatus.biometricType || 'unknown';
     }
 }
 

@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
-import { theme } from './_layout';
+import { useTheme } from '@/context/ThemeContext';
 import { CredentialStorage, StoredCredential } from '../../services/credentialStorageTemp';
 
 interface Credential {
@@ -21,6 +21,7 @@ interface Credential {
 type IconiconsProps = React.ComponentProps<typeof Ionicons>;
 
 export default function PresentCredentials() {
+  const { theme, isDarkMode } = useTheme();
   const [selectedCredential, setSelectedCredential] = useState<string | null>(null);
   const [availableCredentials, setAvailableCredentials] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +79,7 @@ export default function PresentCredentials() {
     };
 
     fetchCredentialAvailability();
-  }, []);
+  }, [theme]);
 
   const handleCredentialSelection = (credential: Credential) => {
     if (!credential.available) {
@@ -125,7 +126,8 @@ export default function PresentCredentials() {
       <TouchableOpacity
         style={[
           styles.credentialCard, 
-          isSelected && styles.selectedCard,
+          { borderColor: theme.border },
+          isSelected && [styles.selectedCard, { borderColor: theme.primary }],
           !credential.available && styles.unavailableCard
         ]}
         onPress={() => handleCredentialSelection(credential)}
@@ -151,14 +153,15 @@ export default function PresentCredentials() {
             <View style={styles.cardTextContainer}>
               <Text style={[
                 styles.credentialName,
-                !credential.available && styles.disabledText
+                { color: theme.text },
+                !credential.available && { color: theme.textSecondary }
               ]}>
                 {credential.name}
               </Text>
-              <Text style={styles.credentialDescription}>
+              <Text style={[styles.credentialDescription, { color: theme.textSecondary }]}>
                 {credential.description}
               </Text>
-              <Text style={styles.issueDate}>
+              <Text style={[styles.issueDate, { color: theme.textSecondary }]}>
                 {credential.available ? formatDate(credential.timestamp) : 'Not issued'}
               </Text>
             </View>
@@ -166,10 +169,11 @@ export default function PresentCredentials() {
             <View style={styles.radioContainer}>
               <View style={[
                 styles.radioOuter, 
-                isSelected && styles.radioOuterSelected,
-                !credential.available && styles.radioOuterDisabled
+                { borderColor: theme.border },
+                isSelected && { borderColor: theme.primary },
+                !credential.available && { borderColor: theme.textSecondary, opacity: 0.5 }
               ]}>
-                {isSelected && <View style={styles.radioInner} />}
+                {isSelected && <View style={[styles.radioInner, { backgroundColor: theme.primary }]} />}
               </View>
             </View>
           </View>
@@ -179,15 +183,18 @@ export default function PresentCredentials() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: theme.dark }]}>
+      <View style={[styles.header, { 
+        backgroundColor: theme.dark, 
+        borderBottomColor: theme.border 
+      }]}>
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => router.back()}
         >
           <Ionicons name="chevron-back" size={24} color={theme.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Present Credentials</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Present Credentials</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -201,14 +208,14 @@ export default function PresentCredentials() {
           duration={800} 
           style={styles.contentContainer}
         >
-          <Text style={styles.sectionTitle}>Select a Credential</Text>
-          <Text style={styles.instructionText}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Select a Credential</Text>
+          <Text style={[styles.instructionText, { color: theme.textSecondary }]}>
             Choose the credential you would like to present. Only one credential can be presented at a time.
           </Text>
 
           {loading ? (
             <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Loading credentials...</Text>
+              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading credentials...</Text>
             </View>
           ) : (
             <View style={styles.credentialsContainer}>
@@ -221,16 +228,19 @@ export default function PresentCredentials() {
             </View>
           )}
 
-          <View style={styles.infoContainer}>
+          <View style={[styles.infoContainer, { backgroundColor: theme.darker }]}>
             <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />
-            <Text style={styles.infoText}>
+            <Text style={[styles.infoText, { color: theme.textSecondary }]}>
               Unavailable credentials need to be requested before they can be presented
             </Text>
           </View>
         </Animatable.View>
       </ScrollView>
 
-      <View style={styles.bottomContainer}>
+      <View style={[styles.bottomContainer, { 
+        borderTopColor: theme.border,
+        backgroundColor: theme.dark
+      }]}>
         <TouchableOpacity
           style={[
             styles.presentButton,
@@ -246,7 +256,7 @@ export default function PresentCredentials() {
             ]}
             style={styles.buttonGradient}
           >
-            <Text style={styles.buttonText}>Present Credential</Text>
+            <Text style={[styles.buttonText, { color: theme.text }]}>Present Credential</Text>
             <Ionicons name="arrow-forward" size={20} color={theme.text} />
           </LinearGradient>
         </TouchableOpacity>
@@ -258,7 +268,6 @@ export default function PresentCredentials() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.dark,
   },
   header: {
     flexDirection: 'row',
@@ -268,8 +277,6 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-    backgroundColor: theme.dark,
   },
   backButton: {
     padding: 4,
@@ -277,7 +284,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: 'Poppins-Bold',
     fontSize: 18,
-    color: theme.text,
   },
   scrollView: {
     flex: 1,
@@ -291,13 +297,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'Poppins-Bold',
     fontSize: 20,
-    color: theme.text,
     marginBottom: 8,
   },
   instructionText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
-    color: theme.textSecondary,
     marginBottom: 24,
   },
   loadingContainer: {
@@ -307,7 +311,6 @@ const styles = StyleSheet.create({
   loadingText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 16,
-    color: theme.textSecondary,
   },
   credentialsContainer: {
     gap: 16,
@@ -316,10 +319,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: theme.border,
   },
   selectedCard: {
-    borderColor: theme.primary,
     borderWidth: 2,
   },
   unavailableCard: {
@@ -350,21 +351,15 @@ const styles = StyleSheet.create({
   credentialName: {
     fontFamily: 'Poppins-Bold',
     fontSize: 16,
-    color: theme.text,
-  },
-  disabledText: {
-    color: theme.textSecondary,
   },
   credentialDescription: {
     fontFamily: 'Poppins-Regular',
     fontSize: 13,
-    color: theme.textSecondary,
     marginTop: 2,
   },
   issueDate: {
     fontFamily: 'Poppins-Regular',
     fontSize: 12,
-    color: theme.textSecondary,
     marginTop: 4,
     fontStyle: 'italic',
   },
@@ -376,27 +371,17 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: theme.border,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  radioOuterSelected: {
-    borderColor: theme.primary,
-  },
-  radioOuterDisabled: {
-    borderColor: theme.textSecondary,
-    opacity: 0.5,
   },
   radioInner: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: theme.primary,
   },
   infoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.darker,
     padding: 12,
     borderRadius: 12,
     marginTop: 24,
@@ -404,14 +389,12 @@ const styles = StyleSheet.create({
   infoText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
-    color: theme.textSecondary,
     marginLeft: 8,
     flex: 1,
   },
   bottomContainer: {
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: theme.border,
   },
   presentButton: {
     borderRadius: 16,
@@ -432,6 +415,5 @@ const styles = StyleSheet.create({
   buttonText: {
     fontFamily: 'Poppins-Bold',
     fontSize: 16,
-    color: theme.text,
   }
 });

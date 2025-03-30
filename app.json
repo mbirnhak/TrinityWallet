@@ -97,6 +97,13 @@
           "backgroundColor": "#ffffff"
         }
       ],
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true,
+          "supportsPictureInPicture": true
+        }
+      ],
       "expo-font",
       [
         "expo-image-picker",
@@ -105,7 +112,8 @@
           "cameraPermission": "The app needs access to your camera to take profile pictures."
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true

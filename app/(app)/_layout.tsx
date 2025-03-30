@@ -1,12 +1,13 @@
 import { Redirect, Tabs } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import { View, StyleSheet } from 'react-native';
 import LottieView from 'lottie-react-native';
 import * as Font from 'expo-font';
 import { useEffect } from "react";
 import { Ionicons } from '@expo/vector-icons';
 
-// Define theme colors for reuse
+// Define theme colors for reuse (keeping for backward compatibility)
 export const theme = {
   dark: '#000000',
   darker: '#1C1C1E',
@@ -24,6 +25,7 @@ export const theme = {
 
 export default function ProtectedLayout() {
   const { authState, isLoading } = useAuth();
+  const { theme: currentTheme } = useTheme();
 
   useEffect(() => {
     Font.loadAsync({
@@ -35,7 +37,7 @@ export default function ProtectedLayout() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: currentTheme.dark }]}>
         <LottieView
           source={require('../../assets/fonts/loading.json')}
           autoPlay
@@ -55,26 +57,26 @@ export default function ProtectedLayout() {
       screenOptions={{
         headerShown: false,
         headerStyle: {
-          backgroundColor: theme.dark,
+          backgroundColor: currentTheme.dark,
           borderBottomWidth: 0.5,
-          borderBottomColor: theme.border,
+          borderBottomColor: currentTheme.border,
         },
-        headerTintColor: theme.text,
+        headerTintColor: currentTheme.text,
         headerTitleStyle: {
           fontFamily: 'Poppins-Bold',
           fontSize: 17,
-          color: theme.text,
+          color: currentTheme.text,
         },
         tabBarStyle: {
-          backgroundColor: theme.dark,
+          backgroundColor: currentTheme.dark,
           borderTopWidth: 0.5,
-          borderTopColor: theme.border,
+          borderTopColor: currentTheme.border,
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.textSecondary,
+        tabBarActiveTintColor: currentTheme.primary,
+        tabBarInactiveTintColor: currentTheme.textSecondary,
         tabBarLabelStyle: {
           fontFamily: 'Poppins-Medium',
           fontSize: 12,
@@ -138,7 +140,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.dark,
   },
   lottieAnimation: {
     width: 200,
