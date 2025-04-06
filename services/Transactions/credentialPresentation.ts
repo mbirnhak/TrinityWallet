@@ -3,7 +3,24 @@ import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import base64url from 'base64url';
 import { createSdJwt, SdJwt } from '../Credentials/SdJwtVc';
-import { CredentialStorage } from '../credentialStorageTemp';
+import { CredentialStorage } from '../credentialStorage';
+import { storedValueKeys } from '../Utils/enums';
+import { getDbEncryptionKey } from '../Utils/crypto';
+import { Validator } from 'jsonschema';
+
+const TRIN_LIB_SERVER_ID = 'lib-verification-service-123';
+
+type DescriptorMap = {
+    id: string;
+    format: string;
+    path: string;
+}
+
+type PresentationSubmission = {
+    id: string;
+    definition_id: string;
+    descriptor_map: DescriptorMap[];
+}
 
 export async function retrieve_authorization_request(request_uri: string) {
     console.log('[Auth Request] Retrieving authorization request');
@@ -11,9 +28,17 @@ export async function retrieve_authorization_request(request_uri: string) {
     if (!response.ok) {
         throw new Error(`Failed to fetch authorization request: ${response.status}`);
     }
+    const client_id = await SecureStore.getItemAsync(storedValueKeys.VERIFIER_CLIENT_ID_KEY);
+    if (client_id == TRIN_LIB_SERVER_ID) {
+        trin_send_presentation(await response.json());
+    }
     const encoded_jwt = await response.text();
     const decoded_jwt = await decode_jwt(encoded_jwt);
     await send_presentation(decoded_jwt);
+}
+
+async function trin_send_presentation(presentation_definition: JSON) {
+
 }
 
 async function send_presentation(decoded_jwt: Record<string, unknown>) {
@@ -21,15 +46,40 @@ async function send_presentation(decoded_jwt: Record<string, unknown>) {
     const client_id = decoded_jwt.client_id;
     const state = decoded_jwt.state;
     const presentation_definition = decoded_jwt.presentation_definition as Record<string, unknown>;
-    const presentation_definition_id = presentation_definition.id;
+    const presentation_definition_id = presentation_definition.id as string;
     const input_descriptors = presentation_definition.input_descriptors as Record<string, unknown>[]
-
-    const input_descriptor_id = input_descriptors[0].id;
 
     const response_mode = decoded_jwt.response_mode;
     const client_metadata = decoded_jwt.client_metadata;
     const nonce = decoded_jwt.nonce;
 
+    /**
+     * Not required to be included in presentation definition.
+     * If present, show these to user.
+     */
+    const presentation_name = presentation_definition?.name;
+    const presentation_purpose = presentation_definition?.purpose;
+
+    /**
+     * Not required to be included in presentation definition .
+     * This field specifies the algorithms/proof type supported for the specified
+     * credential format. We will not use it and assume for our formats (SD-JWT) 
+     * the algorithms we use are supported as they are common.
+     * */
+    const presentation_format = presentation_definition?.format;
+
+    const presentation_submission: PresentationSubmission = {
+        "id": Crypto.randomUUID(),
+        "definition_id": presentation_definition_id,
+        "descriptor_map": []
+    }
+
+    type info_requested = {
+        name: string;
+        purpose: string;
+    };
+    // Information to be shown to user
+    const all_info_requested: info_requested[] = [];
     /**
      * Each descriptor represents a different credential requested.
      * Each descriptor contains "constratins" and constraints contains fields[].
@@ -40,22 +90,38 @@ async function send_presentation(decoded_jwt: Record<string, unknown>) {
      * Search credentials based on JSONPath (to see if any match), then use filter property if its there (its optional) to filter results.
      * 
      */
-    for (const descriptor of input_descriptors) {
+    for (const descriptor of input_descriptors as Record<string, any>[]) {
         console.log("Descriptor: ", descriptor);
-        const matches = findMatchingCredentials(descriptor);
-        // const sd_jwt_presentation = generatePresentation();
-    }
+        const descriptor_name = descriptor.name as string;
+        const descriptor_purpose = descriptor.purpose as string;
+        all_info_requested.push({
+            name: descriptor_name,
+            purpose: descriptor_purpose
+        });
+        const matches = await findMatchingCredentials(descriptor);
 
-    const presentation_submission = {
-        "id": Crypto.randomUUID(),
-        "definition_id": presentation_definition_id,
-        "descriptor_map": [
-            {
-                "id": input_descriptor_id,
-                "format": "vc+sd-jwt",
-                "path": "$"
+        if (matches === null) {
+            console.log("No fields found in descriptor: ", descriptor);
+            let formats = Object.keys(descriptor?.format);
+            if (!formats) {
+                formats = presentation_definition?.format as string[];
             }
-        ]
+
+            // TODO: Search for credentials based on format in presentation definition.
+        }
+        else if (matches.credential_string.length === 0) {
+            console.log("No matching credentials found for descriptor: ", descriptor);
+            return;
+        }
+        const input_descriptor_id = descriptor.id;
+        const descriptor_map_format = descriptor.format as string;
+        const descriptor_map_path = descriptor.path as string;
+        presentation_submission.descriptor_map.push({
+            "id": input_descriptor_id as string,
+            "format": descriptor_map_format,
+            "path": descriptor_map_path
+        })
+        // const sd_jwt_presentation = generatePresentation();
     }
 
     // const params = new URLSearchParams({
@@ -142,8 +208,88 @@ async function createKbJwt(aud: string, sdHash: string, nonce: string): Promise<
     }
 }
 
-async function findMatchingCredentials(descriptor: Record<string, unknown>) {
-    
+type credentialMatches = {
+    credential_string: string[];
+    requested_claims: string[];
+}
+/**
+ * 
+ * @param descriptor input descriptor object from input descriptors array in presentation definition.
+ * @returns Array of matching credentials if any are found.
+ *          Null if the fields array is empty or not present (DOES NOT MEAN NO MATCHING CREDENTIALS)
+ *          Empty array if no matching credentials found or an error occurs.
+ */
+async function findMatchingCredentials(descriptor: Record<string, any>): Promise<credentialMatches | null> {
+    // Initialize db connection
+    const dbEncryptionKey = await getDbEncryptionKey();
+    const storage = new CredentialStorage(dbEncryptionKey);
+    try {
+        const v = new Validator();
+        const matches_and_req_claims: credentialMatches = {
+            credential_string: [],
+            requested_claims: []
+        };
+        const fields = descriptor?.constraints?.fields;
+        if (!fields || fields?.length === 0) {
+            console.log("No fields found in descriptor: ", descriptor);
+            const formats = descriptor?.format;
+            return null;
+        }
+        for (const field of fields) {
+            // Returns array of credentials matching one of the paths in the field.
+            const credentials = await storage.retrieveCredentialsByJsonPath(field.path as string[]);
+            if (!credentials) {
+                console.log("No credentials found for path: ", field.path);
+                return {
+                    credential_string: [],
+                    requested_claims: []
+                };
+            }
+
+            // Filter for credentials with the claim lowest indexed in the path array
+            //      1. Extract unique paths that matched
+            //      2. Find the first path that matched (evaluated from 0 index)
+            //      3. Filter credentials based on the first path
+            const matchingPaths = [...new Set(credentials.map(c => c.matching_path))];
+            const firstMatchingPath = field.path.find((path: string) => matchingPaths.includes(path));
+            const filteredByLowestIndex = credentials.filter((credential) => 
+                credential.matching_path === firstMatchingPath
+            );
+
+            const filter = field?.filter;
+            if (filter) {
+                const filteredCredentials = credentials.filter((credential) => {
+                    const result = v.validate(credential.credential_claims, filter);
+                    return result.valid;
+                });
+                if (filteredCredentials.length === 0) {
+                    console.log("No credentials found for filter: ", filter);
+                    return {
+                        credential_string: [],
+                        requested_claims: []
+                    };
+                } else {
+                    // Use the filtered credentials
+                    matches_and_req_claims.credential_string.push(...filteredCredentials.map(c => c.credential_string));
+                    matches_and_req_claims.requested_claims.push(firstMatchingPath);
+                }
+            } else {
+                // No filter, so just use the filtered credentials
+                matches_and_req_claims.credential_string.push(...filteredByLowestIndex.map(c => c.credential_string));
+                matches_and_req_claims.requested_claims.push(firstMatchingPath);
+            }
+        }
+        return matches_and_req_claims;
+    } catch (error) {
+        console.error("Error finding matching credentials: ", error);
+        return {
+            credential_string: [],
+            requested_claims: []
+        };
+    } finally {
+        // Close the database connection if needed
+        storage.close();
+    }
 }
 
 async function generateDescriptorMap() {
@@ -151,26 +297,26 @@ async function generateDescriptorMap() {
 }
 
 async function generatePresentation(credential_type: string | string[], claims: string | string[]) {
-    const credential = await CredentialStorage.retrieveCredential('jwt_vc');
-    if (!credential) {
-        return null;
-    }
-    console.log("Credential: ", credential)
-    const privateKey_string = await SecureStore.getItemAsync("priv-key");
-    const publicKey_string = await SecureStore.getItemAsync("pub-key");
-    if (!privateKey_string || !publicKey_string) {
-        return null;
-    }
-    const privateKey = JSON.parse(privateKey_string);
-    console.log("Priv Key: ", privateKey)
-    const publicKey = JSON.parse(publicKey_string);
-    const sdjwt = await createSdJwt(privateKey, publicKey);
+    // const credential = await CredentialStorage.retrieveCredential('jwt_vc');
+    // if (!credential) {
+    //     return null;
+    // }
+    // console.log("Credential: ", credential)
+    // const privateKey_string = await SecureStore.getItemAsync("priv-key");
+    // const publicKey_string = await SecureStore.getItemAsync("pub-key");
+    // if (!privateKey_string || !publicKey_string) {
+    //     return null;
+    // }
+    // const privateKey = JSON.parse(privateKey_string);
+    // console.log("Priv Key: ", privateKey)
+    // const publicKey = JSON.parse(publicKey_string);
+    // const sdjwt = await createSdJwt(privateKey, publicKey);
 
-    const disclosureFrame = {
-        "given_name": true,
-        "family_name": true
-    };
+    // const disclosureFrame = {
+    //     "given_name": true,
+    //     "family_name": true
+    // };
 
-    const sd_jwt_presentation = await sdjwt.presentCredential(credential, disclosureFrame);
-    console.log("Presentation: ", sd_jwt_presentation);
+    // const sd_jwt_presentation = await sdjwt.presentCredential(credential, disclosureFrame);
+    // console.log("Presentation: ", sd_jwt_presentation);
 }

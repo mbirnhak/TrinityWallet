@@ -98,8 +98,6 @@ export const ES256 = {
                 true, // whether the key is extractable (i.e., can be used in exportKey)
                 ['verify'],
             );
-            console.log("After import call")
-            console.log("IMPORTED ISS PUB KEY full structure:", JSON.stringify(publicKey, null, 2));
             return async (data: string, signatureBase64url: string) => {
                 const encoder = new TextEncoder();
                 const signature = Uint8Array.from(

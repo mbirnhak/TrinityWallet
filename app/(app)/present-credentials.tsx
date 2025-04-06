@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
-import { CredentialStorage, StoredCredential } from '../../services/credentialStorageTemp';
+import { CredentialStorage, StoredCredential } from '@/services/credentialStorageTemp';
 
 interface Credential {
   id: string;

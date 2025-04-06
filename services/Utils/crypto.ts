@@ -1,11 +1,22 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import bcrypt from 'bcryptjs'
-// var bcrypt = require('bcryptjs');
+import { storedValueKeys } from './enums';
 
-export async function generateSalt() {
-    const randomBytes = await Crypto.getRandomBytesAsync(16);
+const SQL_CIPHER_KEY_SIZE = 32
+
+export async function generateSalt(size: number = 16) {
+    const randomBytes = await Crypto.getRandomBytesAsync(size);
     return Buffer.from(randomBytes).toString('hex');
+}
+
+export async function getDbEncryptionKey() {
+    let dbEncryptionKey = await SecureStore.getItemAsync(storedValueKeys.DB_ENC_KEY);
+    if (!dbEncryptionKey) {
+        dbEncryptionKey = await generateSalt(SQL_CIPHER_KEY_SIZE);
+        await SecureStore.setItemAsync(storedValueKeys.DB_ENC_KEY, dbEncryptionKey);
+    }
+    return dbEncryptionKey;
 }
 
 // Simplified function for hashing a value with SHA-256

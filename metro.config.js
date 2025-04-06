@@ -4,4 +4,6 @@ const { getDefaultConfig } = require('expo/metro-config');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
+config.resolver.sourceExts.push('sql'); // Added for drizzle and expo-sqlite
+
 module.exports = config;

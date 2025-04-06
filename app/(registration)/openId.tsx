@@ -62,7 +62,7 @@ const ANIMATION_FRAMES = [
 ];
 
 export default function OpenId() {
-    const { authState, oidcRegister, hasEmailHash, isLoading } = useAuth();
+    const { authState, oidcRegister, hasEmailHash, isLoading, setIsLoading } = useAuth();
     const [currentFrame, setCurrentFrame] = useState(0);
     const [playbackDirection, setPlaybackDirection] = useState(1); // 1 for forward, -1 for reverse
     const [isLoaded, setIsLoaded] = useState(false);
@@ -75,7 +75,7 @@ export default function OpenId() {
             setIsLoaded(true);
         }, 500);
 
-        let frameInterval;
+        let frameInterval: NodeJS.Timeout | undefined;
         
         if (isLoaded) {
             frameInterval = setInterval(() => {
@@ -107,6 +107,8 @@ export default function OpenId() {
             const imgUri = Image.resolveAssetSource(frame).uri;
             Image.prefetch(imgUri);
         });
+        // Ensure loading value from AuthContext is set to false after preloading
+        setIsLoading(false);
     }, []);
 
     const handleRegistration = async () => {

@@ -19,7 +19,7 @@ export default function PinLogin() {
     const [isScanning, setIsScanning] = useState(false);
     const [isTransitioning, setIsTransitioning] = useState(false);
     const MAX_ATTEMPTS = 5;
-    const lottieRef = useRef(null);
+    const lottieRef = useRef<LottieView>(null);
 
     useEffect(() => {
         const checkForcePin = async () => {
@@ -89,7 +89,7 @@ export default function PinLogin() {
         }
     };
 
-    const handlePinInput = (number) => {
+    const handlePinInput = (number: string) => {
         if (pin.length < 6) {
             const newPin = pin + number;
             setPin(newPin);
@@ -105,7 +105,7 @@ export default function PinLogin() {
         }
     };
 
-    const validatePin = async (inputPin) => {
+    const validatePin = async (inputPin: string) => {
         try {
             const isValid = await signIn(inputPin);
             if (isValid) {
@@ -147,7 +147,7 @@ export default function PinLogin() {
     };
 
     // Smooth transition between PIN and biometrics
-    const toggleAuthMethod = (useBio) => {
+    const toggleAuthMethod = (useBio: boolean | ((prevState: boolean) => boolean)) => {
         setIsTransitioning(true);
         
         // Use Animatable.View's ref to trigger animations

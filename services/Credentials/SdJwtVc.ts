@@ -15,13 +15,11 @@ export interface SdJwt {
 
 // Function to create an SDJwt instance and provide utility methods for SDJwt operations
 export const createSdJwt = async (privateKeyInput?: object, publicKeyInput?: object) => {
-    console.log("Before creating signer and veirifer")
     // Create a signer and verifier for issuing and verifying SDJwt credentials
     const { signer, verifier, privateKey, publicKey } = await createSignerVerifier(
         (privateKeyInput ? privateKeyInput : undefined),
         (publicKeyInput ? publicKeyInput : undefined)
     );
-    console.log("After creating signer and verifier: ");
 
     // Initialize the SDJwt instance with the required configuration
     const sdjwt = new SDJwtVcInstance({
@@ -89,7 +87,7 @@ export const createSdJwt = async (privateKeyInput?: object, publicKeyInput?: obj
             try {
                 return await sdjwt.getClaims(endcodedSDJwt)
             } catch (error) {
-                console.error("Error retrieving claims: ", error);
+                console.log("Error retrieving claims: ", error);
                 return "";
             }
         },
@@ -97,7 +95,7 @@ export const createSdJwt = async (privateKeyInput?: object, publicKeyInput?: obj
             try {
                 return await sdjwt.decode(endcodedSDJwt);
             } catch (error) {
-                console.error("Error decoding credential: ", error);
+                console.log("Error decoding credential: ", error);
                 return "";
             }
         }
