@@ -1,5 +1,3 @@
-// app/backend/Authentication.ts
-
 import * as AuthSession from 'expo-auth-session';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';

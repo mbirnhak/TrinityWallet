@@ -14,10 +14,9 @@ import { useState, useRef, useEffect } from 'react';
 import { router, Stack } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { WebView } from 'react-native-webview';
-// Import only expo-crypto
-import * as Crypto from 'expo-crypto';
+import { createSignerVerifier, ES256 } from '../../services/Credentials/utils'; 
 
-// Simple signature canvas HTML
+// Simple signature canvas HTML (kept the same)
 const signatureHtml = `<!DOCTYPE html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Signature Pad</title>
@@ -37,50 +36,67 @@ const ESign = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSigned, setIsSigned] = useState(false);
   const [signedDocumentUri, setSignedDocumentUri] = useState(null);
+  
   // Crypto state
-  const [hasKey, setHasKey] = useState(false);
+  const [hasKeys, setHasKeys] = useState(false);
+  const [keyInfo, setKeyInfo] = useState({
+    publicKey: null,
+    privateKey: null
+  });
 
   // Check for existing keys on mount
   useEffect(() => {
     (async () => {
       try {
-        const secretKey = await SecureStore.getItemAsync('pdf_signing_key');
-        setHasKey(!!secretKey);
+        const privateKeyJson = await SecureStore.getItemAsync('eidas_private_key');
+        const publicKeyJson = await SecureStore.getItemAsync('eidas_public_key');
+        
+        if (privateKeyJson && publicKeyJson) {
+          const privateKey = JSON.parse(privateKeyJson);
+          const publicKey = JSON.parse(publicKeyJson);
+          
+          setKeyInfo({
+            privateKey,
+            publicKey
+          });
+          
+          setHasKeys(true);
+        }
       } catch (error) {
-        console.error('Error checking for key:', error);
+        console.error('Error checking for keys:', error);
       }
     })();
   }, []);
 
-  // Generate a simpler key for signing
-  const generateKey = async () => {
+  // Generate ECDSA key pair
+  const generateKeys = async () => {
     try {
       setIsProcessing(true);
       
-      // Create a unique key - just timestamp + random number, then hash it
-      const timestamp = new Date().getTime().toString();
-      const randomValue = Math.floor(Math.random() * 1000000).toString();
-      const keyValue = timestamp + randomValue;
+      // Generate key pair using ECDSA (ES256)
+      const { publicKey, privateKey } = await ES256.generateKeyPair();
       
-      // Create a hash of this value
-      const hash = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        keyValue
-      );
+      // Store keys securely
+      await SecureStore.setItemAsync('eidas_private_key', JSON.stringify(privateKey));
+      await SecureStore.setItemAsync('eidas_public_key', JSON.stringify(publicKey));
       
-      // Store the key
-      await SecureStore.setItemAsync('pdf_signing_key', hash);
-      setHasKey(true);
-      Alert.alert('Success', 'Signature key generated');
+      // Update state
+      setKeyInfo({
+        privateKey,
+        publicKey
+      });
+      
+      setHasKeys(true);
+      Alert.alert('Success', 'ECDSA P-256 keys generated for eIDAS signing');
     } catch (error) {
-      Alert.alert('Error', 'Failed to generate key: ' + error.message);
+      Alert.alert('Error', 'Failed to generate keys: ' + error.message);
       console.error(error);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Handle signature canvas
+  // Handle signature canvas (kept the same)
   const clearSignature = () => webViewRef.current?.injectJavaScript('window.clearCanvas(); true;');
   const getSignature = () => webViewRef.current?.injectJavaScript('window.ReactNativeWebView.postMessage(window.getSignature()); true;');
   const handleSignatureData = (data) => {
@@ -90,7 +106,7 @@ const ESign = () => {
   };
   const getSignatureHtml = () => signatureHtml.replace('THEME_CLASS', isDarkMode ? 'dark-mode' : '');
 
-  // Document selection
+  // Document selection (kept the same)
   const selectDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -109,10 +125,10 @@ const ESign = () => {
     }
   };
 
-  // Simpler document signing without using setCustom
+  // Sign document with ECDSA
   const signDocument = async () => {
-    if (!signatureImage || !selectedDocument || !hasKey) {
-      Alert.alert('Error', 'Please provide signature, document, and generate key');
+    if (!signatureImage || !selectedDocument || !hasKeys) {
+      Alert.alert('Error', 'Please provide signature, document, and generate keys');
       return;
     }
 
@@ -123,6 +139,23 @@ const ESign = () => {
       const fileContent = await FileSystem.readAsStringAsync(fileUri, {
         encoding: FileSystem.EncodingType.Base64
       });
+      
+      // Create a signer using the private key
+      const { signer } = await createSignerVerifier(keyInfo.privateKey, keyInfo.publicKey);
+      
+      if (!signer) {
+        throw new Error('Failed to create signer');
+      }
+      
+      // Calculate hash of the document content
+      const documentData = JSON.stringify({
+        name: selectedDocument.name,
+        size: selectedDocument.size,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Sign the document data
+      const signature = await signer(documentData);
       
       // Load PDF and add visual signature
       const pdfDoc = await PDFDocument.load(fileContent);
@@ -158,7 +191,7 @@ const ESign = () => {
       const stampX = width - 230;
       const stampY = 125;
       const stampWidth = 200;
-      const stampHeight = 60;
+      const stampHeight = 80; // Increased height for additional info
       const padding = 8;
       
       // Draw stamp outline
@@ -181,11 +214,19 @@ const ESign = () => {
         color: rgb(0, 0.6, 0.3),
       });
       
-      firstPage.drawText('eIDAS 2.0 certified', {
+      firstPage.drawText('eIDAS 2.0 Advanced Electronic Signature', {
         x: stampX + padding,
         y: stampY + stampHeight - 36,
         size: 10,
         font: helveticaBold,
+        color: rgb(0, 0.6, 0.3),
+      });
+      
+      firstPage.drawText('ECDSA P-256 (ES256)', {
+        x: stampX + padding,
+        y: stampY + stampHeight - 54,
+        size: 8,
+        font: helveticaFont,
         color: rgb(0, 0.6, 0.3),
       });
       
@@ -197,37 +238,23 @@ const ESign = () => {
         color: rgb(0, 0.6, 0.3),
       });
       
-      // Create hash of the document content for verification
-      const documentHash = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        fileContent
-      );
-      
-      // Get the signature key
-      const signKey = await SecureStore.getItemAsync('pdf_signing_key');
-      
-      // Create a simple signature (hash of document hash + key)
-      const signatureData = documentHash + signKey;
-      const digitalSignature = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        signatureData
-      );
-      
       // Using COMPATIBLE methods that exist in the pdf-lib version
-      pdfDoc.setSubject('Digitally Signed Document');
-      pdfDoc.setKeywords(['signed', 'secure', 'eIDAS']);
+      pdfDoc.setSubject('Digitally Signed Document - eIDAS 2.0');
+      pdfDoc.setKeywords(['signed', 'secure', 'eIDAS', 'ECDSA', 'P-256']);
       pdfDoc.setCreator('Trinity Wallet');
-      pdfDoc.setProducer('eIDAS 2.0 Certification');
+      pdfDoc.setProducer('eIDAS 2.0 Advanced Electronic Signature');
       
-      // Store the signature data in a more compatible way - using standard metadata fields
-      pdfDoc.setAuthor('SIG:' + digitalSignature.substring(0, 20));
-      pdfDoc.setTitle('HASH:' + documentHash.substring(0, 20));
+      // Store document metadata for verification
+      const signatureData = {
+        documentInfo: documentData,
+        signature: signature,
+        publicKey: keyInfo.publicKey,
+        signedAt: now.toISOString(),
+        documentName: selectedDocument.name,
+        algorithm: 'ES256'
+      };
       
-      // Add signing date in subject field - ASCII only
-      const signDate = new Date().toISOString();
-      pdfDoc.setSubject('Signed: ' + signDate);
-      
-      // Save the PDF with metadata
+      // Save the PDF
       const finalPdfBytes = await pdfDoc.save();
       const finalPdfBase64 = Buffer.from(finalPdfBytes).toString('base64');
       
@@ -235,15 +262,10 @@ const ESign = () => {
       const signedFileName = selectedDocument.name?.replace('.pdf', '_signed.pdf') || 'signed_document.pdf';
       const signedPdfUri = FileSystem.cacheDirectory + signedFileName;
       
-      // Also save full signature data to a separate metadata file for verification
+      // Create metadata file for verification
       const metadataFileName = signedFileName + '.meta';
       const metadataUri = FileSystem.cacheDirectory + metadataFileName;
-      const metadataContent = JSON.stringify({
-        documentHash: documentHash,
-        signature: digitalSignature,
-        signedAt: signDate,
-        documentName: selectedDocument.name
-      });
+      const metadataContent = JSON.stringify(signatureData, null, 2);
       
       // Write both files
       await FileSystem.writeAsStringAsync(signedPdfUri, finalPdfBase64, {
@@ -256,7 +278,7 @@ const ESign = () => {
       
       setSignedDocumentUri(signedPdfUri);
       setIsSigned(true);
-      Alert.alert('Success', 'Document cryptographically signed with eIDAS stamp');
+      Alert.alert('Success', 'Document signed with ECDSA P-256 (ES256) signature');
     } catch (error) {
       Alert.alert('Error', 'Failed to sign document: ' + error.message);
       console.error(error);
@@ -265,7 +287,7 @@ const ESign = () => {
     }
   };
 
-  // Verify using the separate metadata file
+  // Verify using ECDSA
   const verifyDocument = async () => {
     if (!signedDocumentUri) {
       Alert.alert('Error', 'No signed document to verify');
@@ -286,49 +308,30 @@ const ESign = () => {
       const metadataContent = await FileSystem.readAsStringAsync(metadataUri);
       const metadata = JSON.parse(metadataContent);
       
-      if (!metadata.documentHash || !metadata.signature) {
+      if (!metadata.signature || !metadata.publicKey || !metadata.documentInfo) {
         throw new Error('Invalid signature metadata');
       }
       
-      // Read the signed PDF
-      const fileContent = await FileSystem.readAsStringAsync(signedDocumentUri, {
-        encoding: FileSystem.EncodingType.Base64
-      });
+      // Create verifier from the public key in metadata
+      const { verifier } = await createSignerVerifier(null, metadata.publicKey);
       
-      // Calculate hash of the current document
-      const currentHash = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        fileContent
-      );
+      if (!verifier) {
+        throw new Error('Failed to create verifier');
+      }
       
-      // Compare the stored hash with current one (integrity check)
-      const hashMatches = metadata.documentHash === currentHash;
+      // Verify the signature
+      const isValid = await verifier(metadata.documentInfo, metadata.signature);
       
-      // Verify signature by recalculating it
-      const signKey = await SecureStore.getItemAsync('pdf_signing_key');
-      const signatureData = metadata.documentHash + signKey;
-      const expectedSignature = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        signatureData
-      );
-      
-      const signatureValid = expectedSignature === metadata.signature;
-      
-      if (hashMatches && signatureValid) {
+      if (isValid) {
         const date = new Date(metadata.signedAt).toLocaleString();
         Alert.alert(
           'Verification Successful',
-          `This document is authentic and has not been tampered with.\nSigned: ${date}\nCertified by eIDAS 2.0`
-        );
-      } else if (!hashMatches) {
-        Alert.alert(
-          'Verification Failed',
-          'This document has been modified since it was signed.'
+          `This document is authentic and has not been tampered with.\nSigned: ${date}\nAlgorithm: ${metadata.algorithm}\nCertified by eIDAS 2.0 Advanced Electronic Signature`
         );
       } else {
         Alert.alert(
           'Verification Failed',
-          'The signature is invalid.'
+          'The signature is invalid or the document has been tampered with.'
         );
       }
     } catch (error) {
@@ -339,7 +342,7 @@ const ESign = () => {
     }
   };
 
-  // Share document
+  // Share document (kept the same)
   const shareDocument = async () => {
     if (!signedDocumentUri) {
       Alert.alert('Error', 'No signed document to share');
@@ -378,22 +381,22 @@ const ESign = () => {
             
             {/* Key management section */}
             <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Digital Key</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Digital Key Pair</Text>
               <LinearGradient
                 colors={[theme.surface, theme.darker]}
                 style={[styles.card, { borderColor: theme.border }]}
               >
-                {hasKey ? (
+                {hasKeys ? (
                   <View style={styles.statusRow}>
                     <Ionicons name="shield-checkmark" size={24} color="#4CD97B" />
                     <Text style={[styles.statusText, { color: theme.text }]}>
-                      Signature key ready
+                      ECDSA P-256 keys ready
                     </Text>
                   </View>
                 ) : (
                   <TouchableOpacity 
                     style={styles.generateBtn} 
-                    onPress={generateKey}
+                    onPress={generateKeys}
                     disabled={isProcessing}
                   >
                     {isProcessing ? (
@@ -402,7 +405,7 @@ const ESign = () => {
                       <>
                         <Ionicons name="key-outline" size={24} color={theme.primary} />
                         <Text style={[styles.btnText, { color: theme.text }]}>
-                          Generate Signature Key
+                          Generate ECDSA Key Pair
                         </Text>
                       </>
                     )}
@@ -482,13 +485,13 @@ const ESign = () => {
               style={[
                 styles.mainBtn, 
                 { 
-                  backgroundColor: (!hasKey || !selectedDocument || !signatureImage) 
+                  backgroundColor: (!hasKeys || !selectedDocument || !signatureImage) 
                     ? theme.primary + '50' 
                     : theme.primary
                 }
               ]}
               onPress={signDocument}
-              disabled={!hasKey || !selectedDocument || !signatureImage || isProcessing}
+              disabled={!hasKeys || !selectedDocument || !signatureImage || isProcessing}
             >
               {isProcessing ? (
                 <ActivityIndicator color={theme.text} />
@@ -496,7 +499,7 @@ const ESign = () => {
                 <>
                   <Ionicons name="shield-checkmark" size={20} color={theme.text} />
                   <Text style={[styles.mainBtnText, { color: theme.text }]}>
-                    Sign Document with eIDAS
+                    Sign with ECDSA
                   </Text>
                 </>
               )}

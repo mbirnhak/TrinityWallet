@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'center',
-        width: '80%',
+        width: '90%',
         maxWidth: 300,
         marginBottom: 30,
     },

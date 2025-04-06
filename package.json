@@ -39,9 +39,8 @@
     "expo-crypto": "~14.0.1",
     "expo-dev-client": "~5.0.6",
     "expo-document-picker": "~13.0.3",
-    "expo-file-system": "~18.0.12",
     "expo-drizzle-studio-plugin": "^0.1.1",
-    "expo-file-system": "~18.0.9",
+    "expo-file-system": "~18.0.12",
     "expo-font": "~13.0.2",
     "expo-haptics": "~14.0.0",
     "expo-image-picker": "~16.0.6",
@@ -69,6 +68,7 @@
     "react-native": "0.76.5",
     "react-native-alert-notification": "^0.4.2",
     "react-native-animatable": "^1.4.0",
+    "react-native-barcode-builder": "^2.0.0",
     "react-native-bcrypt": "^2.4.0",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-qrcode-svg": "^6.3.15",
@@ -82,8 +82,6 @@
     "react-native-vector-icons": "^10.2.0",
     "react-native-web": "~0.19.13",
     "react-native-webview": "^13.12.5"
-    "react-native-webview": "13.12.5",
-    "expo-video": "~2.0.5"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
