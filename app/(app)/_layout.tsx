@@ -131,6 +131,18 @@ export default function ProtectedLayout() {
           href: null, // Don't show in the tab bar
         }}
       />
+      <Tabs.Screen
+        name="e-sign"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="library-rental"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
     </Tabs>
   );
 }

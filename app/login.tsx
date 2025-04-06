@@ -184,7 +184,7 @@ export default function PinLogin() {
                 </Animatable.View>
 
                 <View style={styles.content}>
-                    {/* Use a simple View instead of Animatable.View for the content container */}
+                    {/* Main authentication content area */}
                     {useBiometrics ? (
                         <View style={styles.biometricContainer}>
                             {/* Premium Face ID section with larger animation */}
@@ -230,23 +230,6 @@ export default function PinLogin() {
                             <Text style={[styles.authStatusText, { color: theme.text }]}>
                                 {isScanning ? 'Scanning face...' : 'Tap to use Face ID'}
                             </Text>
-                            
-                            {/* Standardized Use PIN Button */}
-                            <TouchableOpacity
-                                style={[styles.switchButtonContainer]}
-                                onPress={() => toggleAuthMethod(false)}
-                                disabled={isScanning || isTransitioning}
-                            >
-                                <LinearGradient
-                                    colors={[theme.primary, theme.primaryDark]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.switchButton}
-                                >
-                                    <Ionicons name="keypad-outline" size={22} color="#FFFFFF" style={styles.buttonIcon} />
-                                    <Text style={[styles.switchText, { color: "#FFFFFF" }]}>Use PIN</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
                         </View>
                     ) : (
                         <View style={styles.pinContainer}>
@@ -294,9 +277,29 @@ export default function PinLogin() {
                                     </TouchableOpacity>
                                 ))}
                             </View>
-                            
-                            {/* Standardized Use Face ID Button */}
-                            {authState && authState.biometricsRegistered && (
+                        </View>
+                    )}
+                    
+                    {/* Fixed position button container at the bottom */}
+                    <View style={styles.buttonContainer}>
+                        {useBiometrics ? (
+                            <TouchableOpacity
+                                style={[styles.switchButtonContainer]}
+                                onPress={() => toggleAuthMethod(false)}
+                                disabled={isScanning || isTransitioning}
+                            >
+                                <LinearGradient
+                                    colors={[theme.primary, theme.primaryDark]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.switchButton}
+                                >
+                                    <Ionicons name="keypad-outline" size={22} color="#FFFFFF" style={styles.buttonIcon} />
+                                    <Text style={[styles.switchText, { color: "#FFFFFF" }]}>Use PIN</Text>
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        ) : (
+                            authState && authState.biometricsRegistered && (
                                 <TouchableOpacity
                                     style={[styles.switchButtonContainer]}
                                     onPress={() => toggleAuthMethod(true)}
@@ -312,9 +315,9 @@ export default function PinLogin() {
                                         <Text style={[styles.switchText, { color: "#FFFFFF" }]}>Use Face ID</Text>
                                     </LinearGradient>
                                 </TouchableOpacity>
-                            )}
-                        </View>
-                    )}
+                            )
+                        )}
+                    </View>
                 </View>
             </LinearGradient>
         </>
@@ -343,15 +346,16 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
-        justifyContent: 'center',
+        justifyContent: 'space-between', // Changed from 'center' to use space between
         alignItems: 'center',
         padding: 20,
+        paddingBottom: 40, // Add bottom padding for consistent button spacing
     },
     // Face ID styles with animation
     biometricContainer: {
+        flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: -20,
         width: '100%', // Ensure full width for button alignment
     },
     faceIdTouchable: {
@@ -403,8 +407,10 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     pinContainer: {
+        flex: 1,
         width: '100%',
         alignItems: 'center',
+        justifyContent: 'center', // Center the PIN components
     },
     pinDisplay: {
         flexDirection: 'row',
@@ -446,6 +452,14 @@ const styles = StyleSheet.create({
     deleteButtonText: {
         fontFamily: 'Poppins-Bold',
         fontSize: 36,
+    },
+    // New button container for consistent positioning
+    buttonContainer: {
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 80, // Fixed height for button area
+        marginBottom: 20,
     },
     // Standardized Switch Button styles
     switchButtonContainer: {

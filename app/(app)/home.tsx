@@ -203,7 +203,7 @@ export default function Dashboard() {
               <ActionButton
                 icon="create"
                 title="E-Signature"
-                onPress={() => alert('Coming soon')}
+                onPress={() => navigateTo('/e-sign')}
                 color="#5E5CE6" // Apple's purple
               />
             </View>
@@ -218,10 +218,10 @@ export default function Dashboard() {
                 color="#FF375F" // Apple's pink
                 iconProvider="MaterialIcons"
               />
-              <ActionButton
+             <ActionButton
                 icon="book"
                 title="Library Rental"
-                onPress={() => alert('Book issued successfully')}
+                onPress={() => navigateTo('/library-rental')}
                 color="#30D158" // Apple's green
               />
             </View>

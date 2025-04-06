@@ -39,6 +39,10 @@ function Profile() {
         }
     };
 
+    const navigateToESign = () => {
+        router.push('/e-sign');
+    };
+
     return (
         <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.dark }]}>
             <StatusBar 
@@ -131,6 +135,19 @@ function Profile() {
                             >
                                 <Ionicons name="cloud-download-outline" size={24} color={theme.primary} />
                                 <Text style={[styles.buttonText, { color: theme.text }]}>Restore Wallet</Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                            style={[styles.button, { borderColor: theme.border }]}
+                            onPress={navigateToESign}
+                        >
+                            <LinearGradient
+                                colors={[theme.surface, theme.darker]}
+                                style={styles.buttonContent}
+                            >
+                                <Ionicons name="create-outline" size={24} color="#5E5CE6" />
+                                <Text style={[styles.buttonText, { color: theme.text }]}>E-Signature</Text>
                             </LinearGradient>
                         </TouchableOpacity>
                     </View>
@@ -241,7 +258,8 @@ function Profile() {
                                     • Secure credential storage{'\n'}
                                     • Biometric authentication{'\n'}
                                     • PIN protection{'\n'}
-                                    • Backup and restore capabilities{'\n\n'}
+                                    • Backup and restore capabilities{'\n'}
+                                    • E-signature functionality{'\n\n'}
                                     <Text style={[styles.versionText, { color: theme.textSecondary }]}>Version 1.0.0</Text>
                                 </Text>
                                 <TouchableOpacity 

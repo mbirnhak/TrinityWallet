@@ -112,6 +112,18 @@
           "cameraPermission": "The app needs access to your camera to take profile pictures."
         }
       ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      [
+        "expo-file-system",
+        {
+          "filePermission": "app-documents"
+        }
+      ],
       "expo-sqlite",
       "expo-video"
     ],
