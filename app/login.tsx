@@ -346,17 +346,17 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
-        justifyContent: 'space-between', // Changed from 'center' to use space between
+        justifyContent: 'space-between',
         alignItems: 'center',
         padding: 20,
-        paddingBottom: 40, // Add bottom padding for consistent button spacing
+        paddingBottom: 30, // Reduced to give more space for the keypad
     },
     // Face ID styles with animation
     biometricContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        width: '100%', // Ensure full width for button alignment
+        width: '100%',
     },
     faceIdTouchable: {
         alignItems: 'center',
@@ -406,39 +406,46 @@ const styles = StyleSheet.create({
         marginBottom: 30,
         textAlign: 'center',
     },
+    // Updated PIN container styles for vertical stretching
     pinContainer: {
         flex: 1,
         width: '100%',
         alignItems: 'center',
-        justifyContent: 'center', // Center the PIN components
+        justifyContent: 'space-between', // Changed to space-between to stretch content
+        paddingTop: 40, // Add more space at top
+        paddingBottom: 10, // Less space at bottom
     },
     pinDisplay: {
         flexDirection: 'row',
-        marginBottom: 40,
+        marginBottom: 60, // Increased for more vertical spacing
     },
     pinDot: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
         borderWidth: 1,
         marginHorizontal: 10,
         backgroundColor: 'transparent',
     },
+    // Updated keypad styles for vertical stretching
     keypad: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'center',
-        width: '90%',
-        maxWidth: 300,
-        marginBottom: 30,
+        width: '95%',
+        maxWidth: 360,
+        marginBottom: 30, // Increased bottom margin
+        flex: 0.8, // Give it a flex value to allow stretching
     },
     keypadButton: {
-        width: '30%',
-        aspectRatio: 1,
+        width: '31%',
+        height: undefined, // Remove fixed height
+        aspectRatio: 1, // Keep aspect ratio square
         justifyContent: 'center',
         alignItems: 'center',
-        margin: '1.5%',
-        borderRadius: 40,
+        margin: '1%',
+        marginVertical: '5%', // Increased vertical margin for more spacing between rows
+        borderRadius: 45,
         borderWidth: 1,
     },
     keypadButtonDisabled: {
@@ -446,32 +453,31 @@ const styles = StyleSheet.create({
         borderWidth: 0,
     },
     keypadButtonText: {
-        fontSize: 24,
+        fontSize: 30, // Slightly increased font size
         fontFamily: 'Poppins-Regular',
     },
     deleteButtonText: {
         fontFamily: 'Poppins-Bold',
         fontSize: 36,
     },
-    // New button container for consistent positioning
+    // Button container styles
     buttonContainer: {
         width: '100%',
         alignItems: 'center',
         justifyContent: 'center',
-        height: 80, // Fixed height for button area
-        marginBottom: 20,
+        height: 80,
+        marginTop: 10, // Add top margin
     },
-    // Standardized Switch Button styles
     switchButtonContainer: {
-        width: 220, // Fixed width for both buttons
+        width: 220,
         overflow: 'hidden',
         borderRadius: 30,
         elevation: 4,
         shadowOffset: { width: 0, height: 3 },
         shadowOpacity: 0.3,
         shadowRadius: 4,
-        shadowColor: '#0A84FF', // Using theme.primary color
-        alignSelf: 'center', // Center the button
+        shadowColor: '#0A84FF',
+        alignSelf: 'center',
     },
     switchButton: {
         flexDirection: 'row',
