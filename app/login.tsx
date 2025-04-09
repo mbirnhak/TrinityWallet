@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
     },
     deleteButtonText: {
         fontFamily: 'Poppins-Bold',
-        fontSize: 36,
+        fontSize: 32,
     },
     // Button container styles
     buttonContainer: {

@@ -260,13 +260,15 @@ export default function ESign() {
       if (!signer) throw new Error('Failed to create signer');
 
       // Prepare document metadata and hash the PDF content along with metadata
+      // Remove the thigns other than content
       const documentData = JSON.stringify({
         name: selectedDocument.name,
         size: selectedDocument.size,
         timestamp: new Date().toISOString(),
         content: fileContentBase64,
       });
-      const documentHash = await hashDocumentData(documentData);
+      
+      const documentHash = await hashDocumentData(fileContentBase64);
       const signature = await signer(documentHash);
 
       // Load the PDF into pdf-lib

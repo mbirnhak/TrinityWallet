@@ -1,22 +1,76 @@
-import { View, ScrollView, StyleSheet, Alert, Text, TouchableOpacity, SafeAreaView, StatusBar, Platform } from 'react-native';
-import { CredentialStorage, StoredCredential } from '../../services/credentialStorageTemp';
+import { View, ScrollView, StyleSheet, Alert, Text, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
+import { CredentialStorage } from '@/services/credentialStorage';
 import * as Animatable from 'react-native-animatable';
 import { useEffect, useState } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import CredentialCard from '../../components/CredentialCard';
 import { useTheme } from '@/context/ThemeContext';
 import CommonHeader from '../../components/Header';
+import { getDbEncryptionKey } from '@/services/Utils/crypto';
+
+// Map of credential types
+const CREDENTIAL_TYPES = {
+  'eu.europa.ec.eudi.pid_jwt_vc_json': 'pid',
+  'eu.europa.ec.eudi.msisdn_sd_jwt_vc': 'msisdn',
+  'eu.europa.ec.eudi.ehic_sd_jwt_vc': 'ehic',
+  'eu.europa.ec.eudi.pseudonym_over18_sd_jwt_vc': 'age_verification',
+  'eu.europa.ec.eudi.iban_sd_jwt_vc': 'iban',
+  'eu.europa.ec.eudi.hiid_sd_jwt_vc': 'health_id',
+  'eu.europa.ec.eudi.tax_sd_jwt_vc': 'tax'
+};
 
 export default function Credentials() {
   const { theme, isDarkMode } = useTheme();
-  const [credentials, setCredentials] = useState<StoredCredential | null>(null);
+  const [storedCredentials, setStoredCredentials] = useState({});
   const [loading, setLoading] = useState(true);
 
   const fetchCredentials = async () => {
     try {
-      const metadata = await CredentialStorage.getMetadata();
-      setCredentials(metadata);
+      setLoading(true);
+      
+      // Initialize credential storage
+      const dbEncryptionKey = await getDbEncryptionKey();
+      const storage = new CredentialStorage(dbEncryptionKey);
+      
+      try {
+        // Fetch all credentials from database
+        const credentialsFromDb = await storage.retrieveCredentials();
+        console.log("Retrieved credentials:", credentialsFromDb ? credentialsFromDb.length : 0);
+        
+        // Process the credentials into a format for our cards
+        const credentials = {};
+        
+        if (credentialsFromDb && credentialsFromDb.length > 0) {
+          // Group credentials by type
+          credentialsFromDb.forEach(cred => {
+            // Try to determine credential type from the VCT or other fields
+            const claims = cred.credential_claims || {};
+            const vct = claims.vct || '';
+            
+            // Find the proper credential type
+            let credType = null;
+            for (const [typeId, shortType] of Object.entries(CREDENTIAL_TYPES)) {
+              if (typeId === vct || (claims.vc && claims.vc._type && claims.vc._type.includes(typeId))) {
+                credType = shortType;
+                break;
+              }
+            }
+            
+            if (credType) {
+              credentials[credType] = {
+                isAvailable: true,
+                timestamp: cred.iss_date ? new Date(cred.iss_date * 1000).toISOString() : new Date().toISOString(),
+                data: cred.credential_string,
+                claims: cred.credential_claims
+              };
+            }
+          });
+        }
+        
+        setStoredCredentials(credentials);
+      } finally {
+        storage.close();
+      }
     } catch (error) {
       console.error('Error fetching credentials:', error);
       Alert.alert(
@@ -33,19 +87,28 @@ export default function Credentials() {
     fetchCredentials();
   }, []);
 
-  const viewCredentialDetails = async (format: 'jwt_vc' | 'mdoc') => {
+  const viewCredentialDetails = (type) => {
     try {
-      const credential = await CredentialStorage.retrieveCredential(format);
-      if (credential) {
+      if (storedCredentials[type] && storedCredentials[type].isAvailable) {
+        const credential = storedCredentials[type];
+        // Format the credential claims for display
+        const formattedClaims = JSON.stringify(credential.claims, null, 2);
+        
         Alert.alert(
-          `${format.toUpperCase()} Credential`,
-          credential.substring(0, 200) + '...',
-          [{ text: 'Close' }]
+          `${type.toUpperCase().replace('_', ' ')} Credential`,
+          `Issued: ${new Date(credential.timestamp).toLocaleDateString()}\n\nFirst 200 chars:\n${credential.data.substring(0, 200)}...`,
+          [
+            { 
+              text: 'View Claims', 
+              onPress: () => Alert.alert('Credential Claims', formattedClaims.substring(0, 1500) + '...', [{ text: 'Close' }]) 
+            },
+            { text: 'Close' }
+          ]
         );
       } else {
         Alert.alert(
           'No Credential',
-          `No ${format.toUpperCase()} credential found.`,
+          `No ${type.toUpperCase()} credential found.`,
           [{ text: 'OK' }]
         );
       }
@@ -80,7 +143,7 @@ export default function Credentials() {
           style={styles.contentContainer}
         >
           <View style={styles.mainContent}>
-            {credentials ? (
+            {Object.keys(storedCredentials).length > 0 ? (
               <Animatable.View 
                 animation="fadeInUp" 
                 duration={800} 
@@ -96,21 +159,82 @@ export default function Credentials() {
                   </TouchableOpacity>
                 </View>
 
-                <CredentialCard
-                  type="jwt_vc"
-                  isAvailable={!!credentials.jwt_vc}
-                  timestamp={String(credentials.timestamp)}
-                  onPress={() => viewCredentialDetails('jwt_vc')}
-                  theme={theme}
-                />
+                {/* Personal ID (PID) */}
+                {storedCredentials.pid && (
+                  <CredentialCard
+                    type="pid"
+                    isAvailable={storedCredentials.pid.isAvailable}
+                    timestamp={storedCredentials.pid.timestamp}
+                    onPress={() => viewCredentialDetails('pid')}
+                    theme={theme}
+                  />
+                )}
                 
-                <CredentialCard
-                  type="mdoc"
-                  isAvailable={!!credentials.mdoc}
-                  timestamp={String(credentials.timestamp)}
-                  onPress={() => viewCredentialDetails('mdoc')}
-                  theme={theme}
-                />
+                {/* Mobile Number */}
+                {storedCredentials.msisdn && (
+                  <CredentialCard
+                    type="msisdn"
+                    isAvailable={storedCredentials.msisdn.isAvailable}
+                    timestamp={storedCredentials.msisdn.timestamp}
+                    onPress={() => viewCredentialDetails('msisdn')}
+                    theme={theme}
+                  />
+                )}
+                
+                {/* Health Insurance Card */}
+                {storedCredentials.ehic && (
+                  <CredentialCard
+                    type="ehic"
+                    isAvailable={storedCredentials.ehic.isAvailable}
+                    timestamp={storedCredentials.ehic.timestamp}
+                    onPress={() => viewCredentialDetails('ehic')}
+                    theme={theme}
+                  />
+                )}
+                
+                {/* Age Verification */}
+                {storedCredentials.age_verification && (
+                  <CredentialCard
+                    type="age_verification"
+                    isAvailable={storedCredentials.age_verification.isAvailable}
+                    timestamp={storedCredentials.age_verification.timestamp}
+                    onPress={() => viewCredentialDetails('age_verification')}
+                    theme={theme}
+                  />
+                )}
+                
+                {/* Bank Account */}
+                {storedCredentials.iban && (
+                  <CredentialCard
+                    type="iban"
+                    isAvailable={storedCredentials.iban.isAvailable}
+                    timestamp={storedCredentials.iban.timestamp}
+                    onPress={() => viewCredentialDetails('iban')}
+                    theme={theme}
+                  />
+                )}
+                
+                {/* Health ID */}
+                {storedCredentials.health_id && (
+                  <CredentialCard
+                    type="health_id"
+                    isAvailable={storedCredentials.health_id.isAvailable}
+                    timestamp={storedCredentials.health_id.timestamp}
+                    onPress={() => viewCredentialDetails('health_id')}
+                    theme={theme}
+                  />
+                )}
+                
+                {/* Tax ID */}
+                {storedCredentials.tax && (
+                  <CredentialCard
+                    type="tax"
+                    isAvailable={storedCredentials.tax.isAvailable}
+                    timestamp={storedCredentials.tax.timestamp}
+                    onPress={() => viewCredentialDetails('tax')}
+                    theme={theme}
+                  />
+                )}
 
                 <View style={[styles.infoContainer, { backgroundColor: theme.darker }]}>
                   <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />

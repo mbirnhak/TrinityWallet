@@ -2,22 +2,22 @@ import React from 'react';
 import { 
   View, 
   Text, 
-  Image, 
   StyleSheet, 
   TouchableOpacity, 
   Modal,
   Platform,
   SafeAreaView,
-  StatusBar,
-  Linking
+  StatusBar
 } from 'react-native';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
+// Import Barcode from the expo-barcode-generator library.
+import { Barcode } from 'expo-barcode-generator';
 
-// Mock library credential — in a real app, these details would come from your credentials store.
+// Mock library credential — in a real app these details would be fetched from your credentials store.
 const libraryCredential = {
   id: 'cred-lib-123',
   type: 'LibraryMembership',
@@ -38,12 +38,10 @@ const LibraryRental = () => {
   const { theme, isDarkMode } = useTheme();
   const [showBarcode, setShowBarcode] = React.useState(false);
 
-  // Using the membershipId to generate the barcode.
+  // Using the membershipId as the barcode value.
   const barcodeValue = libraryCredential.credentialSubject.membershipId;
-  // TEC‑IT Barcode API GET URL in Code39 format.
-  const barcodeURL = `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(barcodeValue)}&code=Code39`;
 
-  // Reset modal state.
+  // Function to reset modal state.
   const resetModal = () => {
     setShowBarcode(false);
   };
@@ -146,10 +144,10 @@ const LibraryRental = () => {
               </View>
 
               <View style={styles.barcodeContainer}>
-                <Image
-                  source={{ uri: barcodeURL }}
-                  style={styles.barcode}
-                  resizeMode="contain"
+                {/* Simple barcode using expo-barcode-generator */}
+                <Barcode
+                  value={barcodeValue}
+                  options={{ format: 'CODE39', background: '#fff', lineColor: '#000' }}
                 />
               </View>
 
@@ -207,7 +205,6 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontFamily: 'Poppins-Bold', fontSize: 20 },
   barcodeContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  barcode: { width: 280, height: 100, marginVertical: 20 },
   doneButton: { paddingVertical: 14, borderRadius: 16, alignItems: 'center' },
   doneButtonText: { fontFamily: 'Poppins-Bold', fontSize: 16 },
 });

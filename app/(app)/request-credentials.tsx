@@ -14,32 +14,53 @@ export default function RequestCredentials() {
 
   const credentials = [
     { 
-      id: 'pid_sdjwt', 
-      name: 'PID (SD-JWT)', 
+      id: 'eu.europa.ec.eudi.pid_jwt_vc_json', 
+      name: 'PID Test', 
       description: 'Personal Identity Document using SD-JWT format',
       icon: 'person-outline',
       color: theme.primary
     },
     { 
-      id: 'pid_mdoc', 
-      name: 'PID (mDOC)', 
-      description: 'Personal Identity Document using mDOC format', 
-      icon: 'card-outline',
+      id: 'eu.europa.ec.eudi.msisdn_sd_jwt_vc', 
+      name: 'MSISDN', 
+      description: 'Mobile Subscriber ISDN Number using SD-JWT format', 
+      icon: 'call-outline',
       color: '#FF9500' // Apple's orange
     },
     { 
-      id: 'trinity_library', 
-      name: 'Trinity Library', 
-      description: 'Library access and book issuance credential',
-      icon: 'library-outline',
+      id: 'eu.europa.ec.eudi.ehic_sd_jwt_vc', 
+      name: 'EHIC', 
+      description: 'European Health Insurance Card using SD-JWT format',
+      icon: 'medical-outline',
       color: '#5E5CE6' // Apple's purple
     },
     { 
-      id: 'trinity_door', 
-      name: 'Trinity Door Lock', 
-      description: 'Electronic door access for campus buildings',
-      icon: 'key-outline',
+      id: 'eu.europa.ec.eudi.pseudonym_over18_sd_jwt_vc', 
+      name: 'Age over 18 Pseudonym', 
+      description: 'Age verification pseudonym using SD-JWT format',
+      icon: 'calendar-outline',
       color: '#FF2D55' // Apple's pink
+    },
+    { 
+      id: 'eu.europa.ec.eudi.iban_sd_jwt_vc', 
+      name: 'IBAN', 
+      description: 'International Bank Account Number using SD-JWT format',
+      icon: 'card-outline',
+      color: '#30B0C7' // Light blue
+    },
+    { 
+      id: 'eu.europa.ec.eudi.hiid_sd_jwt_vc', 
+      name: 'Health ID', 
+      description: 'Health Insurance ID using SD-JWT format',
+      icon: 'fitness-outline',
+      color: '#34C759' // Apple's green
+    },
+    { 
+      id: 'eu.europa.ec.eudi.tax_sd_jwt_vc', 
+      name: 'Tax Number', 
+      description: 'Tax identification number using SD-JWT format',
+      icon: 'receipt-outline',
+      color: '#AF52DE' // Purple
     }
   ];
 
@@ -58,10 +79,17 @@ export default function RequestCredentials() {
       return;
     }
 
+    // Get array of selected credential IDs
+    const selectedCredentialIds = Object.keys(selectedCredentials).filter(id => selectedCredentials[id]);
+
     try {
       setLoading(true);
-      // For now, using the existing credential request function
-      await requestCredential();
+      // Pass the selected credential IDs to the request function
+      const response = await requestCredential(selectedCredentialIds);
+      if (response === 'Error') {
+        Alert.alert('Error', 'Failed to request credentials. Please try again later.');
+        return;
+      }
       Alert.alert(
         'Success', 
         'Your credential request has been submitted successfully',
