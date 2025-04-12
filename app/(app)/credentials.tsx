@@ -1,14 +1,15 @@
-import { View, ScrollView, StyleSheet, Alert, Text, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, Text, TouchableOpacity, SafeAreaView, StatusBar, ActivityIndicator } from 'react-native';
 import { CredentialStorage } from '@/services/credentialStorage';
 import * as Animatable from 'react-native-animatable';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import CredentialCard from '../../components/CredentialCard';
 import { useTheme } from '@/context/ThemeContext';
 import CommonHeader from '../../components/Header';
 import { getDbEncryptionKey } from '@/services/Utils/crypto';
+import { useFocusEffect } from '@react-navigation/native';
 
-// Map of credential types
+// Map of credential types with their VCT identifiers
 const CREDENTIAL_TYPES = {
   'eu.europa.ec.eudi.pid_jwt_vc_json': 'pid',
   'eu.europa.ec.eudi.msisdn_sd_jwt_vc': 'msisdn',
@@ -16,76 +17,172 @@ const CREDENTIAL_TYPES = {
   'eu.europa.ec.eudi.pseudonym_over18_sd_jwt_vc': 'age_verification',
   'eu.europa.ec.eudi.iban_sd_jwt_vc': 'iban',
   'eu.europa.ec.eudi.hiid_sd_jwt_vc': 'health_id',
-  'eu.europa.ec.eudi.tax_sd_jwt_vc': 'tax'
+  'eu.europa.ec.eudi.tax_sd_jwt_vc': 'tax',
+  'eu.europa.ec.eudi.pda1_sd_jwt_vc': 'pda1',
+  'eu.europa.ec.eudi.por_sd_jwt_vc': 'por'
+};
+
+// Human-readable names for credential types
+const CREDENTIAL_NAMES = {
+  'pid': 'Personal ID',
+  'msisdn': 'Mobile Number',
+  'ehic': 'Health Insurance Card',
+  'age_verification': 'Age Verification',
+  'iban': 'Bank Account',
+  'health_id': 'Health ID',
+  'tax': 'Tax ID',
+  'pda1': 'Driving License',
+  'por': 'Place of Residence'
 };
 
 export default function Credentials() {
   const { theme, isDarkMode } = useTheme();
   const [storedCredentials, setStoredCredentials] = useState({});
   const [loading, setLoading] = useState(true);
-
-  const fetchCredentials = async () => {
+  const [error, setError] = useState(null);
+  const [expandedCardId, setExpandedCardId] = useState(null);
+  
+  const fetchCredentials = useCallback(async () => {
+    let storage = null;
+    
     try {
       setLoading(true);
+      setError(null);
+      
+      console.log("Fetching credentials...");
       
       // Initialize credential storage
       const dbEncryptionKey = await getDbEncryptionKey();
-      const storage = new CredentialStorage(dbEncryptionKey);
+      storage = new CredentialStorage(dbEncryptionKey);
       
-      try {
-        // Fetch all credentials from database
-        const credentialsFromDb = await storage.retrieveCredentials();
-        console.log("Retrieved credentials:", credentialsFromDb ? credentialsFromDb.length : 0);
-        
-        // Process the credentials into a format for our cards
-        const credentials = {};
-        
-        if (credentialsFromDb && credentialsFromDb.length > 0) {
-          // Group credentials by type
-          credentialsFromDb.forEach(cred => {
-            // Try to determine credential type from the VCT or other fields
-            const claims = cred.credential_claims || {};
-            const vct = claims.vct || '';
-            
-            // Find the proper credential type
-            let credType = null;
+      // Fetch all credentials from database
+      const credentialsFromDb = await storage.retrieveCredentials();
+      console.log("Retrieved credentials:", credentialsFromDb ? credentialsFromDb.length : 0);
+      
+      if (!credentialsFromDb || credentialsFromDb.length === 0) {
+        setStoredCredentials({});
+        return;
+      }
+      
+      // Process the credentials into a format for our cards
+      const credentials = {};
+      
+      // Group credentials by type
+      credentialsFromDb.forEach(cred => {
+        try {
+          // Try to determine credential type from the VCT or other fields
+          const claims = cred.credential_claims || {};
+          const vct = claims.vct || '';
+          
+          // Find the proper credential type
+          let credType = null;
+          
+          // First try to match by VCT in claims
+          for (const [typeId, shortType] of Object.entries(CREDENTIAL_TYPES)) {
+            // Match by exact VCT or if the typeId is included in any vct field
+            if (typeId === vct || (vct && vct.includes(typeId))) {
+              credType = shortType;
+              break;
+            }
+          }
+          
+          // If not found, check in VC type array or other claim fields
+          if (!credType && claims.vc) {
+            // Check if vc contains a _type array
+            const typeArray = claims.vc._type || [];
             for (const [typeId, shortType] of Object.entries(CREDENTIAL_TYPES)) {
-              if (typeId === vct || (claims.vc && claims.vc._type && claims.vc._type.includes(typeId))) {
+              if (Array.isArray(typeArray) && typeArray.some(t => t.includes(typeId))) {
                 credType = shortType;
                 break;
               }
             }
+          }
+          
+          // If still not found, try more specific claims that might indicate credential type
+          if (!credType) {
+            if (claims.family_name || claims.given_name) credType = 'pid';
+            else if (claims.msisdn || claims.phoneNumber) credType = 'msisdn';
+            else if (claims.ehic_number || claims.healthInsurance) credType = 'ehic';
+            else if (claims.over18 || claims.ageOver18) credType = 'age_verification';
+            else if (claims.iban || claims.bankAccount) credType = 'iban';
+            else if (claims.health_id_number || claims.healthId) credType = 'health_id';
+            else if (claims.tax_id || claims.taxNumber) credType = 'tax';
+          }
+          
+          // Use a fallback if no specific type was detected but we have a credential
+          if (!credType && Object.keys(claims).length > 0) {
+            console.log("Unidentified credential type, using fallback");
             
-            if (credType) {
-              credentials[credType] = {
-                isAvailable: true,
-                timestamp: cred.iss_date ? new Date(cred.iss_date * 1000).toISOString() : new Date().toISOString(),
-                data: cred.credential_string,
-                claims: cred.credential_claims
-              };
+            // Try to determine type from claim keys
+            const claimKeys = Object.keys(claims).join(' ').toLowerCase();
+            
+            if (claimKeys.includes('person') || claimKeys.includes('name')) {
+              credType = 'pid';
+            } else if (claimKeys.includes('phone') || claimKeys.includes('mobile')) {
+              credType = 'msisdn';
+            } else if (claimKeys.includes('health') || claimKeys.includes('insurance')) {
+              credType = 'ehic';
+            } else if (claimKeys.includes('age') || claimKeys.includes('adult')) {
+              credType = 'age_verification';
+            } else if (claimKeys.includes('bank') || claimKeys.includes('account')) {
+              credType = 'iban';
+            } else if (claimKeys.includes('tax')) {
+              credType = 'tax';
             }
-          });
+          }
+          
+          if (credType) {
+            const date = cred.iss_date
+              ? new Date(cred.iss_date * 1000)
+              : new Date();
+            
+            credentials[credType] = {
+              isAvailable: true,
+              timestamp: date.toISOString(),
+              data: cred.credential_string,
+              claims: cred.credential_claims,
+              expiration: cred.exp_date ? new Date(cred.exp_date * 1000).toISOString() : null
+            };
+            
+            console.log(`Found credential of type: ${credType}`);
+          } else {
+            console.log("Unidentified credential type");
+          }
+        } catch (parseError) {
+          console.error("Error parsing credential:", parseError);
         }
-        
-        setStoredCredentials(credentials);
-      } finally {
-        storage.close();
-      }
+      });
+      
+      console.log("Processed credentials:", Object.keys(credentials));
+      setStoredCredentials(credentials);
     } catch (error) {
       console.error('Error fetching credentials:', error);
+      setError('Failed to fetch credentials. Please try again.');
       Alert.alert(
         'Error',
         'Failed to fetch credentials. Please try again.',
         [{ text: 'OK' }]
       );
     } finally {
+      if (storage) {
+        storage.close();
+      }
       setLoading(false);
     }
-  };
+  }, []);
 
+  // Fetch credentials when the component mounts
   useEffect(() => {
     fetchCredentials();
-  }, []);
+  }, [fetchCredentials]);
+  
+  // Refresh credentials when the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchCredentials();
+      return () => {}; // cleanup function
+    }, [fetchCredentials])
+  );
 
   const viewCredentialDetails = (type) => {
     try {
@@ -94,9 +191,12 @@ export default function Credentials() {
         // Format the credential claims for display
         const formattedClaims = JSON.stringify(credential.claims, null, 2);
         
+        // Get a readable name for the credential type
+        const credName = CREDENTIAL_NAMES[type] || type.toUpperCase().replace('_', ' ');
+        
         Alert.alert(
-          `${type.toUpperCase().replace('_', ' ')} Credential`,
-          `Issued: ${new Date(credential.timestamp).toLocaleDateString()}\n\nFirst 200 chars:\n${credential.data.substring(0, 200)}...`,
+          `${credName}`,
+          `Issued: ${new Date(credential.timestamp).toLocaleDateString()}\n${credential.expiration ? `Expires: ${new Date(credential.expiration).toLocaleDateString()}` : ''}\n`,
           [
             { 
               text: 'View Claims', 
@@ -108,7 +208,7 @@ export default function Credentials() {
       } else {
         Alert.alert(
           'No Credential',
-          `No ${type.toUpperCase()} credential found.`,
+          `No ${CREDENTIAL_NAMES[type] || type.toUpperCase()} credential found.`,
           [{ text: 'OK' }]
         );
       }
@@ -127,14 +227,14 @@ export default function Credentials() {
     fetchCredentials();
   };
 
+  // Determine if we have any credentials to show
+  const hasCredentials = Object.keys(storedCredentials).length > 0;
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.dark }]}>
       <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={theme.dark} />
-      <ScrollView 
-        style={[styles.container, { backgroundColor: theme.dark }]}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+      
+      <View style={[styles.container, { backgroundColor: theme.dark }]}>
         <CommonHeader title="Digital Credentials" />
         
         <Animatable.View 
@@ -142,125 +242,97 @@ export default function Credentials() {
           duration={1000} 
           style={styles.contentContainer}
         >
-          <View style={styles.mainContent}>
-            {Object.keys(storedCredentials).length > 0 ? (
-              <Animatable.View 
-                animation="fadeInUp" 
-                duration={800} 
-                style={styles.credentialsContainer}
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={theme.primary} />
+              <Text style={[styles.loadingText, { color: theme.text }]}>Loading credentials...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle-outline" size={48} color={theme.error} />
+              <Text style={[styles.errorText, { color: theme.error }]}>{error}</Text>
+              <TouchableOpacity 
+                style={[styles.retryButton, { backgroundColor: theme.primary }]} 
+                onPress={handleRefresh}
               >
-                <View style={styles.sectionHeader}>
-                  <View style={styles.sectionTitleContainer}>
-                    <Ionicons name="wallet-outline" size={24} color={theme.primary} />
-                    <Text style={[styles.sectionTitle, { color: theme.text }]}>Your Credentials</Text>
+                <Text style={[styles.retryButtonText, { color: theme.buttonText }]}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.mainContent}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <Ionicons name="wallet-outline" size={24} color={theme.primary} />
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Your Credentials</Text>
+                </View>
+                <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton}>
+                  <Ionicons name="refresh-outline" size={20} color={theme.primary} />
+                </TouchableOpacity>
+              </View>
+              
+              {hasCredentials ? (
+                <ScrollView 
+                  style={styles.cardsScrollView}
+                  contentContainerStyle={styles.cardsContainer}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {/* Only show cards for available credentials */}
+                  {Object.keys(storedCredentials).map((type) => {
+                    const credential = storedCredentials[type];
+                    if (!credential || !credential.isAvailable) return null;
+                    
+                    return (
+                      <Animatable.View
+                        key={type}
+                        animation="fadeInUp"
+                        duration={600}
+                        delay={200}
+                      >
+                        <CredentialCard
+                          type={type}
+                          isAvailable={true}
+                          timestamp={credential.timestamp}
+                          onPress={() => viewCredentialDetails(type)}
+                          theme={theme}
+                        />
+                      </Animatable.View>
+                    );
+                  })}
+                  
+                  <View style={[styles.infoContainer, { backgroundColor: theme.darker }]}>
+                    <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />
+                    <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+                      Tap on a credential to expand and view details
+                    </Text>
                   </View>
-                  <TouchableOpacity onPress={handleRefresh}>
-                    <Ionicons name="refresh-outline" size={20} color={theme.primary} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Personal ID (PID) */}
-                {storedCredentials.pid && (
-                  <CredentialCard
-                    type="pid"
-                    isAvailable={storedCredentials.pid.isAvailable}
-                    timestamp={storedCredentials.pid.timestamp}
-                    onPress={() => viewCredentialDetails('pid')}
-                    theme={theme}
-                  />
-                )}
-                
-                {/* Mobile Number */}
-                {storedCredentials.msisdn && (
-                  <CredentialCard
-                    type="msisdn"
-                    isAvailable={storedCredentials.msisdn.isAvailable}
-                    timestamp={storedCredentials.msisdn.timestamp}
-                    onPress={() => viewCredentialDetails('msisdn')}
-                    theme={theme}
-                  />
-                )}
-                
-                {/* Health Insurance Card */}
-                {storedCredentials.ehic && (
-                  <CredentialCard
-                    type="ehic"
-                    isAvailable={storedCredentials.ehic.isAvailable}
-                    timestamp={storedCredentials.ehic.timestamp}
-                    onPress={() => viewCredentialDetails('ehic')}
-                    theme={theme}
-                  />
-                )}
-                
-                {/* Age Verification */}
-                {storedCredentials.age_verification && (
-                  <CredentialCard
-                    type="age_verification"
-                    isAvailable={storedCredentials.age_verification.isAvailable}
-                    timestamp={storedCredentials.age_verification.timestamp}
-                    onPress={() => viewCredentialDetails('age_verification')}
-                    theme={theme}
-                  />
-                )}
-                
-                {/* Bank Account */}
-                {storedCredentials.iban && (
-                  <CredentialCard
-                    type="iban"
-                    isAvailable={storedCredentials.iban.isAvailable}
-                    timestamp={storedCredentials.iban.timestamp}
-                    onPress={() => viewCredentialDetails('iban')}
-                    theme={theme}
-                  />
-                )}
-                
-                {/* Health ID */}
-                {storedCredentials.health_id && (
-                  <CredentialCard
-                    type="health_id"
-                    isAvailable={storedCredentials.health_id.isAvailable}
-                    timestamp={storedCredentials.health_id.timestamp}
-                    onPress={() => viewCredentialDetails('health_id')}
-                    theme={theme}
-                  />
-                )}
-                
-                {/* Tax ID */}
-                {storedCredentials.tax && (
-                  <CredentialCard
-                    type="tax"
-                    isAvailable={storedCredentials.tax.isAvailable}
-                    timestamp={storedCredentials.tax.timestamp}
-                    onPress={() => viewCredentialDetails('tax')}
-                    theme={theme}
-                  />
-                )}
-
-                <View style={[styles.infoContainer, { backgroundColor: theme.darker }]}>
-                  <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />
-                  <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-                    Tap on a credential to expand and view details
+                </ScrollView>
+              ) : (
+                <Animatable.View
+                  animation="fadeIn"
+                  duration={800}
+                  style={styles.emptyStateContainer}
+                >
+                  <Ionicons name="wallet-outline" size={48} color={theme.textSecondary} />
+                  <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>
+                    No credentials issued yet
                   </Text>
-                </View>
-              </Animatable.View>
-            ) : !loading && (
-              <Animatable.View 
-                animation="fadeIn" 
-                duration={800} 
-                style={styles.emptyStateContainer}
-              >
-                <Ionicons name="wallet-outline" size={48} color={theme.textSecondary} />
-                <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>
-                  No credentials issued yet
-                </Text>
-                <Text style={[styles.emptyStateSubtext, { color: theme.textSecondary }]}>
-                  Head to the Dashboard to request new credentials
-                </Text>
-              </Animatable.View>
-            )}
-          </View>
+                  <Text style={[styles.emptyStateSubtext, { color: theme.textSecondary }]}>
+                    Head to the Dashboard to request new credentials
+                  </Text>
+                  <TouchableOpacity
+                    onPress={handleRefresh}
+                    style={[styles.emptyStateButton, { backgroundColor: theme.primary }]}
+                  >
+                    <Text style={[styles.emptyStateButtonText, { color: theme.buttonText }]}>
+                      Refresh
+                    </Text>
+                  </TouchableOpacity>
+                </Animatable.View>
+              )}
+            </View>
+          )}
         </Animatable.View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -272,23 +344,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollContent: {
-    paddingBottom: 30,
-  },
   contentContainer: {
+    flex: 1,
     paddingHorizontal: 16,
   },
   mainContent: {
+    flex: 1,
     paddingHorizontal: 4,
-  },
-  credentialsContainer: {
-    width: '100%',
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    marginTop: 8,
     paddingHorizontal: 4,
   },
   sectionTitleContainer: {
@@ -299,6 +368,15 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Bold',
     fontSize: 20,
     marginLeft: 8,
+  },
+  refreshButton: {
+    padding: 8,
+  },
+  cardsScrollView: {
+    flex: 1,
+  },
+  cardsContainer: {
+    paddingBottom: 24,
   },
   infoContainer: {
     flexDirection: 'row',
@@ -312,6 +390,40 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
     marginLeft: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 16,
+    marginTop: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  errorText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 16,
+    marginTop: 16,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 16,
   },
   emptyStateContainer: {
     flex: 1,
@@ -332,5 +444,14 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     textAlign: 'center',
     opacity: 0.8,
+  },
+  emptyStateButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+  },
+  emptyStateButtonText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
   }
 });
