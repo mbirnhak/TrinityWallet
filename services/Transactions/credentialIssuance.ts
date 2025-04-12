@@ -4,6 +4,7 @@ import { storedValueKeys, constants } from "@/services/Utils/enums";
 import { createSdJwt, SdJwt } from "../Credentials/SdJwtVc";
 import { CredentialStorage } from "../credentialStorage";
 import { getDbEncryptionKey } from "../Utils/crypto";
+import LogService from "../LogService";
 import * as SecureStore from "expo-secure-store";
 import * as Linking from "expo-linking";
 import * as Crypto from "expo-crypto";
@@ -109,6 +110,20 @@ const VCT_TYPES = {
     "eu.europa.ec.eudi.por_sd_jwt_vc": "urn:eu.europa.ec.eudi:por:1",
 };
 
+// We'll use a single LogService instance for all functions
+let logServiceInstance: LogService | null = null;
+
+/**
+ * Get or initialize LogService
+ */
+async function getLogService(): Promise<LogService> {
+  if (!logServiceInstance) {
+    logServiceInstance = LogService.getInstance();
+    await logServiceInstance.initialize();
+  }
+  return logServiceInstance;
+}
+
 /**
  * Generate PKCE challenge pair
  */
@@ -148,6 +163,8 @@ async function generateState() {
  * Step 1: Fetch metadata from issuer
  */
 async function fetchMetadata() {
+  const logService = await getLogService();
+  
   try {
     console.log("[Step 1.a] Fetching OpenID Configuration...");
     const oidcResponse = await fetch(
@@ -165,9 +182,23 @@ async function fetchMetadata() {
       storedValueKeys.METADATA_STORAGE_KEY,
       JSON.stringify(oidcMetadata)
     );
+    
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'success',
+      details: 'Successfully fetched issuer metadata',
+      relying_party: constants.ISSUER_URL
+    });
+    
     return { oidcMetadata, credMetadata };
   } catch (error) {
     console.error("[Metadata] Error:", error);
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'failed',
+      details: `Failed to fetch metadata: ${error instanceof Error ? error.message : String(error)}`,
+      relying_party: constants.ISSUER_URL
+    });
     throw new Error("Failed to fetch metadata");
   }
 }
@@ -180,6 +211,8 @@ async function pushAuthorizationRequest(
   pkce: { challenge: string },
   selectedCredentials: string[] = []
 ) {
+  const logService = await getLogService();
+  
   try {
     console.log("[Step 2] Initiating Push Authorization Request...");
 
@@ -187,6 +220,12 @@ async function pushAuthorizationRequest(
 
     let authDetails = [];
     if (selectedCredentials.length === 0) {
+      await logService.createLog({
+        transaction_type: 'credential_issuance',
+        status: 'failed',
+        details: 'No credentials selected for issuance',
+        relying_party: constants.ISSUER_URL
+      });
       return null;
     } else if (selectedCredentials.length === 1) {
       authDetails = [
@@ -229,10 +268,23 @@ async function pushAuthorizationRequest(
     });
 
     const parResponse = await response.json();
+    
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'success',
+      details: `Push authorization request successful for ${selectedCredentials.length} credential(s)`,
+      relying_party: constants.ISSUER_URL
+    });
 
     return parResponse;
   } catch (error) {
     console.error("[PAR] Error:", error);
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'failed',
+      details: `Push authorization request failed: ${error instanceof Error ? error.message : String(error)}`,
+      relying_party: constants.ISSUER_URL
+    });
     throw new Error("Failed to push authorization request");
   }
 }
@@ -241,12 +293,27 @@ async function pushAuthorizationRequest(
  * Step 3: Create and open authorization URL
  */
 async function initiateAuthorization(oidcMetadata: any, requestUri: string) {
+  const logService = await getLogService();
+  
   try {
     console.log("[Step 3] Creating authorization URL...");
     const authUrl = `${oidcMetadata.authorization_endpoint}?client_id=${constants.EU_ISSUER_CLIENT_ID}&request_uri=${requestUri}`;
     await Linking.openURL(authUrl);
+    
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'pending',
+      details: 'Authorization URL opened for user consent',
+      relying_party: constants.ISSUER_URL
+    });
   } catch (error) {
     console.error("[Authorization] Error:", error);
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'failed',
+      details: `Failed to open authorization URL: ${error instanceof Error ? error.message : String(error)}`,
+      relying_party: constants.ISSUER_URL
+    });
     throw new Error("Failed to open authorization URL");
   }
 }
@@ -269,6 +336,8 @@ export function findIssuerKeyByType(
  * Step 4: Handle token exchange
  */
 export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
+  const logService = await getLogService();
+  
   try {
     console.log("[Step 4] Exchanging code for token...");
 
@@ -297,9 +366,22 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[Step 4] Token request failed:", errorText);
+      await logService.createLog({
+        transaction_type: 'credential_issuance',
+        status: 'failed',
+        details: `Token request failed with status: ${response.status}`,
+        relying_party: constants.ISSUER_URL
+      });
       throw new Error(`Token request failed with status: ${response.status}`);
     }
     const tokenResponse = await response.json();
+
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'success',
+      details: 'Successfully exchanged code for access token',
+      relying_party: constants.ISSUER_URL
+    });
 
     // Store tokens
     await SecureStore.setItemAsync("access_token", tokenResponse.access_token);
@@ -326,6 +408,12 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
     return tokenResponse;
   } catch (error) {
     console.error("[Token] Error:", error);
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'failed',
+      details: `Failed to exchange code for token: ${error instanceof Error ? error.message : String(error)}`,
+      relying_party: constants.ISSUER_URL
+    });
     throw new Error("Failed to exchange code for token");
   }
 }
@@ -336,6 +424,8 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
 async function generateJWTProof(
   nonce?: string
 ): Promise<{ jwt: string; sdJwt: SdJwt }> {
+  const logService = await getLogService();
+  
   try {
     console.log("[Step 5] Generating JWT proof with nonce");
     const sdJwt = await createSdJwt();
@@ -375,6 +465,12 @@ async function generateJWTProof(
     return { jwt, sdJwt };
   } catch (error) {
     console.error("[Step 5] Error generating JWT proof:", error);
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'failed',
+      details: `Error generating JWT proof: ${error instanceof Error ? error.message : String(error)}`,
+      relying_party: constants.ISSUER_URL
+    });
     throw error;
   }
 }
@@ -382,8 +478,16 @@ async function generateJWTProof(
 async function generateCredentialRequest(
   authDetails: Record<string, string>[]
 ) {
+  const logService = await getLogService();
+  
   if (authDetails.length < 1) {
     console.log("No credentials in auth details");
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'failed',
+      details: 'No credentials in auth details',
+      relying_party: constants.ISSUER_URL
+    });
     return null;
   }
   let requests = [];
@@ -436,6 +540,9 @@ async function generateCredentialRequest(
   }
 }
 
+// Update the requestCredentialWithToken function to use the new pattern
+// This is a partial update - only showing the key function that needs modification
+
 /**
  * Step 6: Request credential using access token
  */
@@ -443,9 +550,23 @@ async function requestCredentialWithToken(
   accessToken: string,
   authDetails: Record<string, string>[]
 ): Promise<CredentialResponse> {
+  const logService = LogService.getInstance();
+  let storage: CredentialStorage | null = null;
+  
   // Setup credential storage instance
-  const dbEncryptionKey = await getDbEncryptionKey();
-  const storage = new CredentialStorage(dbEncryptionKey);
+  try {
+    const dbEncryptionKey = await getDbEncryptionKey();
+    storage = new CredentialStorage(dbEncryptionKey);
+  } catch (error) {
+    console.error("Error initializing CredentialStorage:", error);
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'failed',
+      details: `Failed to initialize credential storage: ${error instanceof Error ? error.message : String(error)}`,
+      relying_party: constants.ISSUER_URL
+    });
+    throw error;
+  }
 
   const num_credentials = authDetails.length;
   console.log("Auth Details: ", authDetails);
@@ -486,6 +607,12 @@ async function requestCredentialWithToken(
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[Step 6.2] Initial batch request failed:", errorText);
+      await logService.createLog({
+        transaction_type: 'credential_issuance',
+        status: 'failed',
+        details: `Initial credential request failed with status: ${response.status}`,
+        relying_party: constants.ISSUER_URL
+      });
       throw new Error(
         `Initial batch request failed with status: ${response.status}`
       );
@@ -527,6 +654,8 @@ async function requestCredentialWithToken(
             console.log("Result of credential storage: ", success);
             console.log(`[Step 6.5] Successfully stored credential ${i}`);
             storedCredentials.push(i);
+            
+            // No need to log here since storeCredential in CredentialStorage does the logging
           } catch (storageError) {
             const errorMessage = `Error storing credential ${i}: ${
               storageError instanceof Error
@@ -554,8 +683,22 @@ async function requestCredentialWithToken(
           "[Step 6.5] All credentials stored successfully:",
           storedCredentials
         );
+        
+        await logService.createLog({
+          transaction_type: 'credential_issuance',
+          status: 'success',
+          details: `Successfully stored ${storedCredentials.length} credential(s)`,
+          relying_party: constants.ISSUER_URL
+        });
       } else {
         console.warn("[Step 6.5] No credentials were stored");
+        
+        await logService.createLog({
+          transaction_type: 'credential_issuance',
+          status: 'failed',
+          details: 'No credentials were stored',
+          relying_party: constants.ISSUER_URL
+        });
       }
     } else {
       if (responseData.credential) {
@@ -566,6 +709,8 @@ async function requestCredentialWithToken(
           );
           console.log("Result of credential storage: ", success);
           console.log(`[Step 6.5] Successfully stored credential`);
+          
+          // No need to log here since storeCredential in CredentialStorage does the logging
         } catch (storageError) {
           const errorMessage = `Error storing credential: ${
             storageError instanceof Error
@@ -573,14 +718,26 @@ async function requestCredentialWithToken(
               : String(storageError)
           }`;
           console.error("[Step 6.5]", errorMessage);
+          
+          await logService.createLog({
+            transaction_type: 'credential_issuance',
+            status: 'failed',
+            details: errorMessage,
+            relying_party: constants.ISSUER_URL
+          });
         }
       } else {
         console.warn("[Step 6.5] No credentials received in response");
+        
+        await logService.createLog({
+          transaction_type: 'credential_issuance',
+          status: 'failed',
+          details: 'No credentials received in response',
+          relying_party: constants.ISSUER_URL
+        });
       }
     }
 
-    // const cred_returned = await storage.retrieveCredentials();
-    // console.log("Credentials stored: ", cred_returned);
     console.log(
       "[Step 6] ====== Batch Credential Request Flow Completed Successfully ======"
     );
@@ -591,11 +748,19 @@ async function requestCredentialWithToken(
       "[Step 6] ====== Error in Batch Credential Request Flow ======"
     );
     console.error("[Step 6] Error details:", error);
+    
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'failed',
+      details: `Error in credential request: ${error instanceof Error ? error.message : String(error)}`,
+      relying_party: constants.ISSUER_URL
+    });
+    
     throw error;
   } finally {
-    // Close the database connection here
-    storage.close();
-    console.log("[Step 6] Database connection closed");
+    // No need to close database connections anymore
+    // They're automatically closed after each operation in our new pattern
+    console.log("[Step 6] Database operations completed");
   }
 }
 
@@ -603,7 +768,16 @@ async function requestCredentialWithToken(
  * Main function to initiate credential request
  */
 export async function requestCredential(selectedCredentialIds: string[]) {
+  const logService = await getLogService();
+  
   try {
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'pending',
+      details: `Initiating credential request for ${selectedCredentialIds.join(', ')}`,
+      relying_party: constants.ISSUER_URL
+    });
+    
     // Step 1: Fetch metadata
     const { oidcMetadata } = await fetchMetadata();
 
@@ -618,12 +792,36 @@ export async function requestCredential(selectedCredentialIds: string[]) {
     );
     if (parResponse === null) {
       console.error("[Credential Request] No authorization details found");
+      
+      await logService.createLog({
+        transaction_type: 'credential_issuance',
+        status: 'failed',
+        details: 'No authorization details found',
+        relying_party: constants.ISSUER_URL
+      });
+      
       return "Error";
     }
     // Step 3: Initiate authorization
     await initiateAuthorization(oidcMetadata, parResponse.request_uri);
   } catch (error) {
     console.error("[Credential Request] Error:", error);
+    await logService.createLog({
+      transaction_type: 'credential_issuance',
+      status: 'failed',
+      details: `Credential request failed: ${error instanceof Error ? error.message : String(error)}`,
+      relying_party: constants.ISSUER_URL
+    });
     Alert.alert("Error", "Failed to initiate credential request");
   }
 }
+
+// Clean up LogService when the module is unloaded
+export function cleanupLogService() {
+  if (logServiceInstance) {
+    logServiceInstance.close();
+    logServiceInstance = null;
+  }
+}
+
+export default requestCredential;

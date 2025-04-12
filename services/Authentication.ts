@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { jwtDecode, JwtPayload } from 'jwt-decode';
 import { bcryptVerifyHash, generateSalt, shaHash, verifyAgainstShaHash } from './Utils/crypto';
 import { storedValueKeys } from './Utils/enums';
+import LogService from './LogService';
 
 interface CustomJwtPayload extends JwtPayload {
     email?: string;
@@ -104,8 +105,14 @@ class AuthenticationService {
     };
     private lastAuthMethod: 'PIN' | 'BIOMETRIC' | null = null;
     private authInProgress: boolean = false;
+    private logService: LogService;
 
-    private constructor() { }
+    private constructor() {
+        this.logService = LogService.getInstance();
+        this.logService.initialize().catch(error => {
+            console.error("Failed to initialize LogService in AuthenticationService:", error);
+        });
+    }
 
     public static getInstance(): AuthenticationService {
         if (!AuthenticationService.instance) {
@@ -125,6 +132,11 @@ class AuthenticationService {
             return true; // email exists
         } catch (error) {
             console.error('Error retrieving value from storage: ', error);
+            await this.logService.createLog({
+                transaction_type: 'authentication',
+                status: 'failed',
+                details: `Error checking email hash: ${error instanceof Error ? error.message : String(error)}`
+            });
             return null;
         }
     }
@@ -136,6 +148,11 @@ class AuthenticationService {
             return decoded;
         } catch (error) {
             console.error('Error Decoding JWT Token: ', error);
+            this.logService.createLog({
+                transaction_type: 'authentication',
+                status: 'failed',
+                details: `Error decoding JWT: ${error instanceof Error ? error.message : String(error)}`
+            });
             return null;
         }
     }
@@ -186,6 +203,12 @@ class AuthenticationService {
                     // return error if email is not shown
                     if (!emailEntered) {
                         console.error('Error Extracting Email from JWT: ', decoded);
+                        await this.logService.createLog({
+                            transaction_type: 'authentication',
+                            status: 'failed',
+                            details: 'Failed to extract email from JWT token',
+                            relying_party: OPENID_CONFIG.issuer
+                        });
                         return false;
                     }
 
@@ -196,9 +219,21 @@ class AuthenticationService {
                         if (emailMatches) {
                             await SecureStore.setItemAsync(storedValueKeys.ID_TOKEN, tokenResponse.idToken);
                             this.authState.idToken = tokenResponse.idToken;
+                            await this.logService.createLog({
+                                transaction_type: 'authentication',
+                                status: 'success',
+                                details: 'Successfully authenticated with OpenID',
+                                relying_party: OPENID_CONFIG.issuer
+                            });
                             return true;
                         } else {
                             console.log('Email does not matched the one you registered with')
+                            await this.logService.createLog({
+                                transaction_type: 'authentication',
+                                status: 'failed',
+                                details: 'Email does not match the registered email',
+                                relying_party: OPENID_CONFIG.issuer
+                            });
                             return false;
                         }
                     } else {
@@ -206,21 +241,51 @@ class AuthenticationService {
                         const hashedEmail = await shaHash(emailEntered, await generateSalt());
                         if (!hashedEmail) {
                             console.error('Failed to hash the email, aborting registration.');
+                            await this.logService.createLog({
+                                transaction_type: 'authentication',
+                                status: 'failed',
+                                details: 'Failed to hash email during registration',
+                                relying_party: OPENID_CONFIG.issuer
+                            });
                             return false; // Abort the process if hashing fails
                         }
                         await SecureStore.setItemAsync(storedValueKeys.EMAIL, hashedEmail);
                         this.authState.idToken = tokenResponse.idToken;
+                        await this.logService.createLog({
+                            transaction_type: 'authentication',
+                            status: 'success',
+                            details: 'First-time user registration successful',
+                            relying_party: OPENID_CONFIG.issuer
+                        });
                         return true;
                     }
                 } else {
                     console.log("ID Token was empty: ", tokenResponse.idToken);
+                    await this.logService.createLog({
+                        transaction_type: 'authentication',
+                        status: 'failed',
+                        details: 'Empty ID token received',
+                        relying_party: OPENID_CONFIG.issuer
+                    });
                     return false;
                 }
             }
             console.log("OpenIDC Authentication Failed or was Canceled");
+            await this.logService.createLog({
+                transaction_type: 'authentication',
+                status: 'failed',
+                details: 'OpenID authentication failed or was canceled',
+                relying_party: OPENID_CONFIG.issuer
+            });
             return false;
         } catch (error) {
             console.error('OpenID Authentication Error:', error);
+            await this.logService.createLog({
+                transaction_type: 'authentication',
+                status: 'failed',
+                details: `OpenID authentication error: ${error instanceof Error ? error.message : String(error)}`,
+                relying_party: OPENID_CONFIG.issuer
+            });
             return false;
         }
     }
@@ -247,6 +312,11 @@ class AuthenticationService {
             
             if (!biometricStatus.isAvailable) {
                 console.log('Biometrics are not available:', biometricStatus);
+                await this.logService.createLog({
+                    transaction_type: 'authentication',
+                    status: 'failed',
+                    details: `Biometric authentication unavailable: ${JSON.stringify(biometricStatus)}`
+                });
                 this.authInProgress = false;
                 return false;
             }
@@ -269,13 +339,29 @@ class AuthenticationService {
             if (result.success) {
                 this.lastAuthMethod = 'BIOMETRIC';
                 this.authInProgress = false;
+                await this.logService.createLog({
+                    transaction_type: 'authentication',
+                    status: 'success',
+                    details: `Successfully authenticated with ${biometricStatus.biometricType}`
+                });
                 return true;
             }
+            
+            await this.logService.createLog({
+                transaction_type: 'authentication',
+                status: 'failed',
+                details: `Biometric authentication failed: ${result.error || 'User canceled'}`
+            });
             
             this.authInProgress = false;
             return false;
         } catch (error) {
             console.error('Biometric authentication error:', error);
+            await this.logService.createLog({
+                transaction_type: 'authentication',
+                status: 'failed',
+                details: `Biometric authentication error: ${error instanceof Error ? error.message : String(error)}`
+            });
             this.authInProgress = false;
             return false;
         }
@@ -306,12 +392,28 @@ class AuthenticationService {
                 const storedHash = await SecureStore.getItemAsync(storedValueKeys.PIN);
                 if (!storedHash) {
                     console.error('No PIN hash found');
+                    await this.logService.createLog({
+                        transaction_type: 'authentication',
+                        status: 'failed',
+                        details: 'No PIN hash found'
+                    });
                     return false;
                 }
                 const pinMatches = await bcryptVerifyHash(pin, storedHash);
                 if (pinMatches) {
                     this.lastAuthMethod = 'PIN';
                     this.authState.isAuthenticated = true;
+                    await this.logService.createLog({
+                        transaction_type: 'authentication',
+                        status: 'success',
+                        details: 'Successfully authenticated with PIN'
+                    });
+                } else {
+                    await this.logService.createLog({
+                        transaction_type: 'authentication',
+                        status: 'failed',
+                        details: 'PIN authentication failed: incorrect PIN'
+                    });
                 }
                 return pinMatches;
             }
@@ -319,6 +421,11 @@ class AuthenticationService {
             console.error('Authentication error:', error);
             this.authState.error = error instanceof Error ? error.message : 'Authentication failed';
             this.authState.isAuthenticated = false;
+            await this.logService.createLog({
+                transaction_type: 'authentication',
+                status: 'failed',
+                details: `Authentication error: ${error instanceof Error ? error.message : String(error)}`
+            });
             return false;
         }
     }
@@ -336,6 +443,12 @@ class AuthenticationService {
             biometricsRegistered: this.authState.biometricsRegistered,
             forcePin: this.authState.forcePin,
         };
+        
+        await this.logService.createLog({
+            transaction_type: 'authentication',
+            status: 'success',
+            details: 'User logged out'
+        });
     }
 
     // Logout and rest Authenticate with OpenIDC (need to re-auth with OpenIDC and confirm PIN)
@@ -353,6 +466,12 @@ class AuthenticationService {
             biometricsRegistered: this.authState.biometricsRegistered,
             forcePin: true,
         };
+        
+        await this.logService.createLog({
+            transaction_type: 'authentication',
+            status: 'success',
+            details: 'User de-authorized (full logout)'
+        });
     }
 
     getLastAuthMethod(): string | null {
@@ -368,6 +487,7 @@ class AuthenticationService {
         const biometricStatus = await biometricAvailability();
         return biometricStatus.biometricType || 'unknown';
     }
+
 }
 
 export default AuthenticationService;

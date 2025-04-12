@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { CredentialStorage, StoredCredential } from '@/services/credentialStorageTemp';
+import LogService from '@/services/LogService';
 
 interface Credential {
   id: string;
@@ -25,6 +26,9 @@ export default function PresentCredentials() {
   const [selectedCredential, setSelectedCredential] = useState<string | null>(null);
   const [availableCredentials, setAvailableCredentials] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Initialize LogService
+  const logService = LogService.getInstance();
 
   useEffect(() => {
     const fetchCredentialAvailability = async () => {
@@ -94,18 +98,58 @@ export default function PresentCredentials() {
     setSelectedCredential(credential.id === selectedCredential ? null : credential.id);
   };
 
-  const handlePresentCredential = () => {
+  const handlePresentCredential = async () => {
     if (!selectedCredential) {
       Alert.alert('No Selection', 'Please select a credential to present');
       return;
     }
 
-    // This is a placeholder for the actual credential presentation functionality
-    Alert.alert(
-      'Present Credential',
-      'This feature will be implemented in a future update.',
-      [{ text: 'OK' }]
-    );
+    // Find the selected credential
+    const credential = availableCredentials.find(c => c.id === selectedCredential);
+    if (!credential) {
+      Alert.alert('Error', 'Selected credential not found');
+      return;
+    }
+
+    try {
+      // Initialize LogService
+      await logService.initialize();
+      
+      // Log the credential presentation
+      await logService.createLog({
+        transaction_type: 'credential_presentation',
+        status: 'success',
+        details: `Presented ${credential.name} credential`,
+        relying_party: 'Test Verifier'
+      });
+      
+      // This is a placeholder for the actual credential presentation functionality
+      Alert.alert(
+        'Credential Presented',
+        `You have successfully presented your ${credential.name} credential.`,
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            // After successful presentation, navigate back
+            router.back();
+          } 
+        }]
+      );
+    } catch (error) {
+      console.error('Error during credential presentation:', error);
+      
+      // Log the error
+      await logService.createLog({
+        transaction_type: 'credential_presentation',
+        status: 'failed',
+        details: `Failed to present ${credential.name} credential: ${error.message || 'Unknown error'}`,
+        relying_party: 'Test Verifier'
+      });
+      
+      Alert.alert('Error', 'Failed to present credential. Please try again.');
+    } finally {
+      logService.close();
+    }
   };
 
   const formatDate = (timestamp: number | undefined) => {

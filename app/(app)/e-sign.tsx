@@ -17,6 +17,7 @@ import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
+import LogService from '@/services/LogService';
 import {
   PDFDocument,
   rgb,
@@ -122,6 +123,8 @@ export default function ESign() {
   const [isSigned, setIsSigned] = useState(false);
   const [signedDocumentUri, setSignedDocumentUri] = useState<string | null>(null);
 
+  const logService = LogService.getInstance();
+
   // Crypto key state
   const [hasKeys, setHasKeys] = useState(false);
   const [keyInfo, setKeyInfo] = useState<{ publicKey: any; privateKey: any }>({
@@ -157,10 +160,28 @@ export default function ESign() {
       await SecureStore.setItemAsync('eidas_public_key', JSON.stringify(publicKey));
       setKeyInfo({ privateKey, publicKey });
       setHasKeys(true);
+
+         // Log key generation
+      await logService.createLog({
+          transaction_type: 'authentication',
+          status: 'success',
+          details: 'Generated ECDSA P-256 keys for eIDAS signing'
+      });
+      
+        
       Alert.alert('Success', 'ECDSA P-256 keys generated for eIDAS signing');
+
     } catch (error: any) {
+
+      await logService.createLog({
+        transaction_type: 'authentication',
+        status: 'failed',
+        details: `Failed to generate keys: ${error.message || 'Unknown error'}`
+      });
+
       Alert.alert('Error', 'Failed to generate keys: ' + error.message);
       console.error(error);
+
     } finally {
       setIsProcessing(false);
     }
@@ -249,6 +270,14 @@ export default function ESign() {
     }
     setIsProcessing(true);
     try {
+
+      await logService.createLog({
+        transaction_type: 'signature',
+        status: 'pending',
+        details: `Signing document: ${selectedDocument?.name}`,
+        relying_party: 'E-Signature Service'
+      });
+
       // Read the selected PDF in base64 format
       const fileUri = selectedDocument.uri;
       const fileContentBase64 = await FileSystem.readAsStringAsync(fileUri, {
@@ -418,10 +447,24 @@ export default function ESign() {
       setSignedDocumentUri(targetUri);
       setIsSigned(true);
 
+      await logService.createLog({
+        transaction_type: 'signature',
+        status: 'success',
+        details: `Document signed successfully: ${selectedDocument?.name}`,
+        relying_party: 'E-Signature Service'
+      });
+
       // Immediately open the native share dialog
       await Sharing.shareAsync(targetUri);
       Alert.alert('Success', `Document signed, saved, and ready to share.\nSaved path: ${targetUri}`);
     } catch (error: any) {
+      await logService.createLog({
+        transaction_type: 'signature',
+        status: 'failed',
+        details: `Failed to sign document: ${error.message || 'Unknown error'}`,
+        relying_party: 'E-Signature Service'
+      });
+
       Alert.alert('Error', 'Failed to sign document: ' + error.message);
       console.error(error);
     } finally {
@@ -439,6 +482,15 @@ export default function ESign() {
     }
     setIsProcessing(true);
     try {
+
+      // Log verification initiation
+      await logService.createLog({
+        transaction_type: 'signature',
+        status: 'pending',
+        details: 'Verifying document signature',
+        relying_party: 'E-Signature Service'
+      });
+
       const fileContentBase64 = await FileSystem.readAsStringAsync(signedDocumentUri, {
         encoding: FileSystem.EncodingType.Base64
       });
@@ -515,11 +567,29 @@ export default function ESign() {
       const isValid = await verifier(signatureInfo.documentHash, signatureInfo.signatureValue);
       if (isValid) {
         const date = new Date(signatureInfo.signingTime).toLocaleString();
+
+       // Log successful verification
+       await logService.createLog({
+        transaction_type: 'signature',
+        status: 'success',
+        details: `Document signature verified successfully. Signed on: ${date}`,
+        relying_party: 'E-Signature Service'
+      });
+
         Alert.alert(
           'Verification Successful',
           `Document is authentic.\nSigned on: ${date}\nAlgorithm: ${signatureInfo.algorithm}\neIDAS 2.0 Advanced Electronic Signature`
         );
       } else {
+
+        await logService.createLog({
+          transaction_type: 'signature',
+          status: 'failed',
+          details: 'Document signature verification failed: Invalid signature or document tampered',
+          relying_party: 'E-Signature Service'
+        });
+
+        
         Alert.alert('Verification Failed', 'Signature invalid or document tampered.');
       }
     } catch (error: any) {

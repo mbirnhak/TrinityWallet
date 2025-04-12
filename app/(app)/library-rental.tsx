@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -16,6 +16,7 @@ import { router, Stack } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 // Import Barcode from the expo-barcode-generator library.
 import { Barcode } from 'expo-barcode-generator';
+import LogService from '@/services/LogService';
 
 // Mock library credential — in a real app these details would be fetched from your credentials store.
 const libraryCredential = {
@@ -38,12 +39,47 @@ const LibraryRental = () => {
   const { theme, isDarkMode } = useTheme();
   const [showBarcode, setShowBarcode] = React.useState(false);
 
+  // Initialize LogService
+  const logService = LogService.getInstance();
+
   // Using the membershipId as the barcode value.
   const barcodeValue = libraryCredential.credentialSubject.membershipId;
+
+  // Initialize LogService when component mounts
+  useEffect(() => {
+    const initializeLogService = async () => {
+      await logService.initialize();
+    };
+    
+    initializeLogService();
+    
+    // Cleanup function
+    return () => {
+      logService.close();
+    };
+  }, []);
 
   // Function to reset modal state.
   const resetModal = () => {
     setShowBarcode(false);
+  };
+  
+  // Function to handle presenting library membership
+  const handlePresentMembership = async () => {
+    try {
+      // Log the presentation action
+      await logService.createLog({
+        transaction_type: 'credential_presentation',
+        status: 'success',
+        details: 'Presented Library Membership credential',
+        relying_party: 'Trinity College Library'
+      });
+      
+      // Show the barcode modal
+      setShowBarcode(true);
+    } catch (error) {
+      console.error('Error logging library membership presentation:', error);
+    }
   };
 
   return (
@@ -112,7 +148,7 @@ const LibraryRental = () => {
             {/* Present Membership Button */}
             <TouchableOpacity
               style={[styles.presentButton, { backgroundColor: theme.primary }]}
-              onPress={() => setShowBarcode(true)}
+              onPress={handlePresentMembership}
             >
               <Ionicons name="barcode-outline" size={20} color={theme.text} style={styles.buttonIcon} />
               <Text style={[styles.buttonText, { color: theme.text }]}>Present Membership</Text>

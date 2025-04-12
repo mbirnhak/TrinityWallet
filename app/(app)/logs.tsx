@@ -1,66 +1,76 @@
-import { View, ScrollView, StyleSheet, Text, TouchableOpacity, TextInput, FlatList } from 'react-native';
+import { View, ScrollView, StyleSheet, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
-
-// Log entry type definition
-type LogEntry = {
-  id: number;
-  type: 'issuance' | 'presentation' | 'backup' | 'restore' | 'signature';
-  credential: string;
-  date: Date;
-  status: 'success' | 'failed' | 'pending';
-  details: string;
-};
-
-// Placeholder log data
-const PLACEHOLDER_LOGS: LogEntry[] = [
-  { id: 1, type: 'issuance', credential: 'PID (SD-JWT)', date: new Date(2025, 2, 1, 10, 30), status: 'success', details: 'Credential issued successfully' },
-  { id: 2, type: 'presentation', credential: 'Trinity Library', date: new Date(2025, 2, 1, 9, 15), status: 'success', details: 'Credential presented to service provider' },
-  { id: 3, type: 'presentation', credential: 'PID (mDOC)', date: new Date(2025, 1, 28, 14, 22), status: 'success', details: 'Credential presented to service provider' },
-  { id: 4, type: 'issuance', credential: 'Trinity Door Lock', date: new Date(2025, 1, 28, 11, 5), status: 'success', details: 'Credential issued successfully' },
-  { id: 5, type: 'presentation', credential: 'PID (SD-JWT)', date: new Date(2025, 1, 27, 16, 40), status: 'failed', details: 'Connection timed out' },
-  { id: 6, type: 'backup', credential: 'All credentials', date: new Date(2025, 1, 26, 8, 30), status: 'success', details: 'Backup completed successfully' },
-  { id: 7, type: 'presentation', credential: 'Trinity Library', date: new Date(2025, 1, 25, 13, 10), status: 'success', details: 'Credential presented to service provider' },
-  { id: 8, type: 'issuance', credential: 'PID (SD-JWT)', date: new Date(2025, 1, 25, 10, 45), status: 'success', details: 'Credential issued successfully' },
-  { id: 9, type: 'signature', credential: 'E-Signature', date: new Date(2025, 1, 24, 14, 30), status: 'success', details: 'Document signed successfully' },
-  { id: 10, type: 'restore', credential: 'All credentials', date: new Date(2025, 1, 23, 9, 0), status: 'success', details: 'Restore completed successfully' },
-  { id: 11, type: 'presentation', credential: 'Trinity Door Lock', date: new Date(2025, 1, 22, 8, 15), status: 'success', details: 'Credential presented to service provider' },
-  { id: 12, type: 'presentation', credential: 'PID (mDOC)', date: new Date(2025, 1, 20, 16, 20), status: 'failed', details: 'Verifier service unavailable' },
-];
+import LogService from '@/services/LogService';
+import { Log } from '@/db/schema';
 
 export default function Logs() {
   const { theme, isDarkMode } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<Record<string, boolean>>({
-    issuance: true,
-    presentation: true,
-    backup: true,
-    restore: true,
-    signature: true
+    credential_issuance: true,
+    credential_presentation: true,
+    authentication: true,
+    signature: true,
+    error: true
   });
   const [selectedStatus, setSelectedStatus] = useState<Record<string, boolean>>({
     success: true,
     failed: true,
     pending: true
   });
+  const [logs, setLogs] = useState<Log[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Get LogService instance
+  const logService = LogService.getInstance();
+
+  // Load logs when component mounts
+  useEffect(() => {
+    loadLogs();
+  }, []);
+
+  // Function to load logs
+  const loadLogs = async () => {
+    try {
+      setLoading(true);
+      const logData = await logService.getLogs();
+      
+      // Sort logs by timestamp, most recent first
+      const sortedLogs = logData.sort((a, b) => b.transaction_datetime - a.transaction_datetime);
+      setLogs(sortedLogs);
+    } catch (error) {
+      console.error('Error loading logs:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Handle refresh
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadLogs();
+  };
 
   // Function to get appropriate icon based on log type
   const getLogIcon = (type: string) => {
     switch (type) {
-      case 'issuance':
+      case 'credential_issuance':
         return 'key-outline';
-      case 'presentation':
+      case 'credential_presentation':
         return 'id-card-outline';
-      case 'backup':
-        return 'cloud-upload-outline';
-      case 'restore':
-        return 'cloud-download-outline';
+      case 'authentication':
+        return 'lock-closed-outline';
       case 'signature':
         return 'create-outline';
+      case 'error':
+        return 'alert-circle-outline';
       default:
         return 'document-outline';
     }
@@ -80,12 +90,36 @@ export default function Logs() {
     }
   };
 
+  // Format transaction type for display
+  const formatTransactionType = (type: string) => {
+    switch (type) {
+      case 'credential_issuance':
+        return 'Credential Issuance';
+      case 'credential_presentation':
+        return 'Credential Presentation';
+      case 'authentication':
+        return 'Authentication';
+      case 'signature':
+        return 'E-Signature';
+      case 'error':
+        return 'Error';
+      default:
+        return type.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+    }
+  };
+
+  // Convert Unix timestamp to readable date
+  const formatTimestamp = (timestamp: number) => {
+    const date = new Date(timestamp * 1000);
+    return `${date.toLocaleDateString()} • ${date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`;
+  };
+
   // Filter logs based on search and filters
   const filteredLogs = useMemo(() => {
-    return PLACEHOLDER_LOGS
+    return logs
       .filter(log => {
         // Check if log type is selected
-        if (!selectedTypes[log.type]) return false;
+        if (!selectedTypes[log.transaction_type]) return false;
         
         // Check if status is selected
         if (!selectedStatus[log.status]) return false;
@@ -95,13 +129,13 @@ export default function Logs() {
         
         const query = searchQuery.toLowerCase();
         return (
-          log.credential.toLowerCase().includes(query) ||
-          log.type.toLowerCase().includes(query) ||
-          log.details.toLowerCase().includes(query)
+          (log.details?.toLowerCase().includes(query) || false) ||
+          log.transaction_type.toLowerCase().includes(query) ||
+          (log.relying_party?.toLowerCase().includes(query) || false)
         );
-      })
-      .sort((a, b) => b.date.getTime() - a.date.getTime()); // Sort by date (newest first)
-  }, [searchQuery, selectedTypes, selectedStatus]);
+      });
+      // Logs are already sorted by date in loadLogs function
+  }, [searchQuery, selectedTypes, selectedStatus, logs]);
 
   // Toggle filter selection
   const toggleTypeFilter = (type: string) => {
@@ -119,7 +153,7 @@ export default function Logs() {
   };
 
   // Render a single log item
-  const renderLogItem = ({ item }: { item: LogEntry }) => (
+  const renderLogItem = ({ item }: { item: Log }) => (
     <Animatable.View 
       animation="fadeIn" 
       duration={300}
@@ -132,7 +166,7 @@ export default function Logs() {
             { backgroundColor: getStatusColor(item.status) + '20' }
           ]}>
             <Ionicons 
-              name={getLogIcon(item.type)} 
+              name={getLogIcon(item.transaction_type)} 
               size={16} 
               color={getStatusColor(item.status)} 
             />
@@ -142,12 +176,12 @@ export default function Logs() {
         <View style={styles.logTitleContainer}>
           <Text style={[styles.logTitle, { color: theme.text }]}>
             <Text style={[styles.logType, { color: theme.primary }]}>
-              {item.type.charAt(0).toUpperCase() + item.type.slice(1)}:
-            </Text> {item.credential}
+              {formatTransactionType(item.transaction_type)}:
+            </Text> {item.relying_party || 'System'}
           </Text>
           
           <Text style={[styles.logDate, { color: theme.textSecondary }]}>
-            {item.date.toLocaleDateString()} • {item.date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
+            {formatTimestamp(item.transaction_datetime)}
           </Text>
         </View>
         
@@ -164,7 +198,7 @@ export default function Logs() {
       </View>
       
       <View style={styles.logDetailsContainer}>
-        <Text style={[styles.logDetails, { color: theme.textSecondary }]}>{item.details}</Text>
+        <Text style={[styles.logDetails, { color: theme.textSecondary }]}>{item.details || 'No details provided'}</Text>
       </View>
     </Animatable.View>
   );
@@ -238,33 +272,33 @@ export default function Logs() {
         >
           <FilterPill 
             label="Issuance" 
-            isActive={selectedTypes.issuance} 
-            onPress={() => toggleTypeFilter('issuance')}
+            isActive={selectedTypes.credential_issuance} 
+            onPress={() => toggleTypeFilter('credential_issuance')}
             color={theme.primary}
           />
           <FilterPill 
             label="Presentation" 
-            isActive={selectedTypes.presentation} 
-            onPress={() => toggleTypeFilter('presentation')}
+            isActive={selectedTypes.credential_presentation} 
+            onPress={() => toggleTypeFilter('credential_presentation')}
             color="#5E5CE6" // Apple's purple
           />
           <FilterPill 
-            label="Backup" 
-            isActive={selectedTypes.backup} 
-            onPress={() => toggleTypeFilter('backup')}
+            label="Authentication" 
+            isActive={selectedTypes.authentication} 
+            onPress={() => toggleTypeFilter('authentication')}
             color="#64D2FF" // Apple's blue
           />
           <FilterPill 
-            label="Restore" 
-            isActive={selectedTypes.restore} 
-            onPress={() => toggleTypeFilter('restore')}
-            color="#30D158" // Apple's green
-          />
-          <FilterPill 
-            label="Signature" 
+            label="E-Signature" 
             isActive={selectedTypes.signature} 
             onPress={() => toggleTypeFilter('signature')}
-            color="#FF9500" // Apple's orange
+            color="#FF2D55" // Apple's pink
+          />
+          <FilterPill 
+            label="Error" 
+            isActive={selectedTypes.error} 
+            onPress={() => toggleTypeFilter('error')}
+            color={theme.error} // Error color
           />
         </ScrollView>
         
@@ -291,13 +325,25 @@ export default function Logs() {
         </View>
       </View>
 
-      {filteredLogs.length > 0 ? (
+      {loading && !refreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading logs...</Text>
+        </View>
+      ) : filteredLogs.length > 0 ? (
         <FlatList
           data={filteredLogs}
           renderItem={renderLogItem}
           keyExtractor={item => item.id.toString()}
           contentContainerStyle={styles.logsList}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[theme.primary]}
+            />
+          }
         />
       ) : (
         <View style={styles.emptyState}>
@@ -306,6 +352,12 @@ export default function Logs() {
           <Text style={[styles.emptyStateSubtext, { color: theme.textSecondary }]}>
             Try adjusting your filters or search query
           </Text>
+          <TouchableOpacity 
+            style={[styles.refreshButton, { backgroundColor: theme.primary }]} 
+            onPress={loadLogs}
+          >
+            <Text style={[styles.refreshButtonText, { color: theme.dark }]}>Refresh</Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
@@ -462,5 +514,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 8,
     opacity: 0.8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 16,
+    marginTop: 12,
+  },
+  refreshButton: {
+    marginTop: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  refreshButtonText: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 14,
   },
 });

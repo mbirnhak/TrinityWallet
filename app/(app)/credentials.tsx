@@ -8,6 +8,7 @@ import { useTheme } from '@/context/ThemeContext';
 import CommonHeader from '../../components/Header';
 import { getDbEncryptionKey } from '@/services/Utils/crypto';
 import { useFocusEffect } from '@react-navigation/native';
+import LogService from '@/services/LogService';
 
 // Map of credential types with their VCT identifiers
 const CREDENTIAL_TYPES = {
@@ -41,6 +42,7 @@ export default function Credentials() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedCardId, setExpandedCardId] = useState(null);
+  const logService = LogService.getInstance();
   
   const fetchCredentials = useCallback(async () => {
     let storage = null;
@@ -53,14 +55,26 @@ export default function Credentials() {
       
       // Initialize credential storage
       const dbEncryptionKey = await getDbEncryptionKey();
+      if (!dbEncryptionKey) {
+        throw new Error("Failed to retrieve database encryption key");
+      }
+      
       storage = new CredentialStorage(dbEncryptionKey);
       
       // Fetch all credentials from database
       const credentialsFromDb = await storage.retrieveCredentials();
       console.log("Retrieved credentials:", credentialsFromDb ? credentialsFromDb.length : 0);
       
+      // Log credential fetch attempt
+      await logService.createLog({
+        transaction_type: 'credential_presentation',
+        status: credentialsFromDb && credentialsFromDb.length > 0 ? 'success' : 'pending',
+        details: `Retrieved ${credentialsFromDb ? credentialsFromDb.length : 0} credentials`
+      });
+      
       if (!credentialsFromDb || credentialsFromDb.length === 0) {
         setStoredCredentials({});
+        setLoading(false);
         return;
       }
       
@@ -68,10 +82,18 @@ export default function Credentials() {
       const credentials = {};
       
       // Group credentials by type
-      credentialsFromDb.forEach(cred => {
+      for (const cred of credentialsFromDb) {
         try {
+          if (!cred || !cred.credential_claims) {
+            console.log("Skipping invalid credential entry");
+            continue;
+          }
+          
           // Try to determine credential type from the VCT or other fields
-          const claims = cred.credential_claims || {};
+          const claims = typeof cred.credential_claims === 'string' 
+            ? JSON.parse(cred.credential_claims) 
+            : cred.credential_claims;
+            
           const vct = claims.vct || '';
           
           // Find the proper credential type
@@ -89,9 +111,11 @@ export default function Credentials() {
           // If not found, check in VC type array or other claim fields
           if (!credType && claims.vc) {
             // Check if vc contains a _type array
-            const typeArray = claims.vc._type || [];
+            const typeArray = Array.isArray(claims.vc._type) ? claims.vc._type : 
+                             (typeof claims.vc._type === 'string' ? [claims.vc._type] : []);
+                             
             for (const [typeId, shortType] of Object.entries(CREDENTIAL_TYPES)) {
-              if (Array.isArray(typeArray) && typeArray.some(t => t.includes(typeId))) {
+              if (typeArray.some(t => t && typeof t === 'string' && t.includes(typeId))) {
                 credType = shortType;
                 break;
               }
@@ -128,36 +152,51 @@ export default function Credentials() {
               credType = 'iban';
             } else if (claimKeys.includes('tax')) {
               credType = 'tax';
+            } else {
+              // Last resort fallback - use generic credential type
+              credType = 'pid'; // Default to personal ID if nothing else matches
             }
           }
           
           if (credType) {
             const date = cred.iss_date
-              ? new Date(cred.iss_date * 1000)
+              ? new Date(Number(cred.iss_date) * 1000)
               : new Date();
             
             credentials[credType] = {
               isAvailable: true,
               timestamp: date.toISOString(),
               data: cred.credential_string,
-              claims: cred.credential_claims,
-              expiration: cred.exp_date ? new Date(cred.exp_date * 1000).toISOString() : null
+              claims: claims,
+              expiration: cred.exp_date ? new Date(Number(cred.exp_date) * 1000).toISOString() : null
             };
             
             console.log(`Found credential of type: ${credType}`);
           } else {
-            console.log("Unidentified credential type");
+            console.log("Unidentified credential type, skipping");
           }
         } catch (parseError) {
           console.error("Error parsing credential:", parseError);
         }
-      });
+      }
       
       console.log("Processed credentials:", Object.keys(credentials));
       setStoredCredentials(credentials);
     } catch (error) {
       console.error('Error fetching credentials:', error);
       setError('Failed to fetch credentials. Please try again.');
+      
+      // Log the error
+      try {
+        await logService.createLog({
+          transaction_type: 'credential_presentation',
+          status: 'failed',
+          details: `Error fetching credentials: ${error instanceof Error ? error.message : String(error)}`
+        });
+      } catch (logError) {
+        console.error("Error logging credential fetch failure:", logError);
+      }
+      
       Alert.alert(
         'Error',
         'Failed to fetch credentials. Please try again.',
@@ -165,7 +204,11 @@ export default function Credentials() {
       );
     } finally {
       if (storage) {
-        storage.close();
+        try {
+          storage.close();
+        } catch (closeError) {
+          console.error("Error closing storage:", closeError);
+        }
       }
       setLoading(false);
     }
@@ -194,6 +237,13 @@ export default function Credentials() {
         // Get a readable name for the credential type
         const credName = CREDENTIAL_NAMES[type] || type.toUpperCase().replace('_', ' ');
         
+        // Log credential view action
+        logService.createLog({
+          transaction_type: 'credential_presentation',
+          status: 'success',
+          details: `Viewed credential details for ${credName}`
+        }).catch(err => console.error("Error logging credential view:", err));
+        
         Alert.alert(
           `${credName}`,
           `Issued: ${new Date(credential.timestamp).toLocaleDateString()}\n${credential.expiration ? `Expires: ${new Date(credential.expiration).toLocaleDateString()}` : ''}\n`,
@@ -214,6 +264,14 @@ export default function Credentials() {
       }
     } catch (error) {
       console.error('Error viewing credential:', error);
+      
+      // Log the error
+      logService.createLog({
+        transaction_type: 'error',
+        status: 'failed',
+        details: `Error viewing credential details: ${error instanceof Error ? error.message : String(error)}`
+      }).catch(err => console.error("Error logging credential view failure:", err));
+      
       Alert.alert(
         'Error',
         'Failed to view credential details. Please try again.',

@@ -1,46 +1,56 @@
-import { View, ScrollView, StyleSheet, Text, TouchableOpacity, SafeAreaView, StatusBar, Platform } from 'react-native';
+import { View, ScrollView, StyleSheet, Text, TouchableOpacity, SafeAreaView, StatusBar, Platform, ActivityIndicator } from 'react-native';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { Href, router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
-import { BlurView } from 'expo-blur';
 import CommonHeader from '../../components/Header';
+import LogService from '@/services/LogService';
+import { Log } from '@/db/schema';
 
 // Define types for the icon names
 type IconiconsProps = React.ComponentProps<typeof Ionicons>;
 type MaterialIconsProps = React.ComponentProps<typeof MaterialIcons>;
 type MaterialCommunityIconsProps = React.ComponentProps<typeof MaterialCommunityIcons>;
 
-interface LogItem {
-  id: number;
-  type: string;
-  credential: string;
-  date: Date;
-  status: string;
-}
-
-// Placeholder log data
-const PLACEHOLDER_LOGS: LogItem[] = [
-  { id: 1, type: 'issuance', credential: 'PID (SD-JWT)', date: new Date(2025, 2, 1, 10, 30), status: 'success' },
-  { id: 2, type: 'presentation', credential: 'Trinity Library', date: new Date(2025, 2, 1, 9, 15), status: 'success' },
-  { id: 3, type: 'presentation', credential: 'PID (mDOC)', date: new Date(2025, 1, 28, 14, 22), status: 'success' },
-  { id: 4, type: 'issuance', credential: 'Trinity Door Lock', date: new Date(2025, 1, 28, 11, 5), status: 'success' },
-  { id: 5, type: 'presentation', credential: 'PID (SD-JWT)', date: new Date(2025, 1, 27, 16, 40), status: 'failed' },
-  { id: 6, type: 'access', credential: 'Main Office Door', date: new Date(2025, 1, 27, 14, 15), status: 'success' },
-  { id: 7, type: 'transaction', credential: 'Library Book', date: new Date(2025, 1, 26, 11, 30), status: 'success' },
-];
-
 export default function Dashboard() {
   const { theme, isDarkMode } = useTheme();
-  const [recentLogs, setRecentLogs] = useState<LogItem[]>([]);
+  const [recentLogs, setRecentLogs] = useState<Log[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(true);
+
+  // Initialize LogService
+  const logService = LogService.getInstance();
 
   useEffect(() => {
-    // In a real implementation, this would fetch actual logs from storage or API
-    setRecentLogs(PLACEHOLDER_LOGS.slice(0, 5));
+    // Load recent logs when component mounts
+    loadRecentLogs();
+
+    // Cleanup function
+    return () => {
+      logService.close();
+    };
   }, []);
+
+  const loadRecentLogs = async () => {
+    try {
+      setLogsLoading(true);
+      await logService.initialize();
+      const logs = await logService.getLogs();
+      
+      // Sort logs by timestamp (most recent first) and get top 5
+      const sortedLogs = logs
+        .sort((a, b) => b.transaction_datetime - a.transaction_datetime)
+        .slice(0, 5);
+        
+      setRecentLogs(sortedLogs);
+    } catch (error) {
+      console.error('Error loading logs:', error);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
 
   const navigateTo = (route: Href) => {
     setIsLoading(true);
@@ -53,22 +63,56 @@ export default function Dashboard() {
   // Function to get icon based on action type
   const getActionIcon = (type: string): IconiconsProps['name'] => {
     switch (type) {
-      case 'issuance':
+      case 'credential_issuance':
         return 'key-outline';
-      case 'presentation':
+      case 'credential_presentation':
         return 'id-card-outline';
-      case 'backup':
-        return 'cloud-upload-outline';
-      case 'restore':
-        return 'cloud-download-outline';
+      case 'authentication':
+        return 'lock-closed-outline';
       case 'signature':
         return 'create-outline';
-      case 'access':
-        return 'log-in-outline';
-      case 'transaction':
-        return 'book-outline';
+      case 'error':
+        return 'alert-circle-outline';
       default:
         return 'ellipsis-horizontal-outline';
+    }
+  };
+
+  // Format transaction type for display
+  const formatTransactionType = (type: string) => {
+    switch (type) {
+      case 'credential_issuance':
+        return 'Credential Issuance';
+      case 'credential_presentation':
+        return 'Credential Presentation';
+      case 'authentication':
+        return 'Authentication';
+      case 'signature':
+        return 'E-Signature';
+      case 'error':
+        return 'Error';
+      default:
+        return type.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+    }
+  };
+
+  // Format Unix timestamp to readable date
+  const formatTimestamp = (timestamp: number) => {
+    const date = new Date(timestamp * 1000);
+    return `${date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})} • ${date.toLocaleDateString()}`;
+  };
+
+  // Function to get appropriate color based on status
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'success':
+        return theme.success;
+      case 'failed':
+        return theme.error;
+      case 'pending':
+        return '#FF9500'; // Apple's orange
+      default:
+        return theme.textSecondary;
     }
   };
 
@@ -119,7 +163,7 @@ export default function Dashboard() {
 
   // Component for log items
   interface LogItemProps {
-    log: LogItem;
+    log: Log;
   }
 
   // Component for log items
@@ -132,32 +176,29 @@ export default function Dashboard() {
       <View style={styles.logIconContainer}>
         <View style={[
           styles.logIcon,
-          { backgroundColor: log.status === 'success' ? theme.primary + '20' : theme.error + '20' }
+          { backgroundColor: getStatusColor(log.status) + '20' }
         ]}>
           <Ionicons
-            name={getActionIcon(log.type)}
+            name={getActionIcon(log.transaction_type)}
             size={16}
-            color={log.status === 'success' ? theme.primary : theme.error}
+            color={getStatusColor(log.status)}
           />
         </View>
       </View>
       <View style={styles.logContent}>
         <Text style={[styles.logTitle, { color: theme.text }]}>
-          {log.type === 'issuance' ? 'Issued: ' :
-            log.type === 'presentation' ? 'Presented: ' :
-              log.type === 'access' ? 'Accessed: ' :
-                log.type === 'transaction' ? 'Transaction: ' : ''}
-          <Text style={[styles.logHighlight, { color: theme.primary }]}>{log.credential}</Text>
+          {formatTransactionType(log.transaction_type)}: 
+          <Text style={[styles.logHighlight, { color: theme.primary }]}> {log.relying_party || 'System'}</Text>
         </Text>
         <Text style={[styles.logTime, { color: theme.textSecondary }]}>
-          {log.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {log.date.toLocaleDateString()}
+          {formatTimestamp(log.transaction_datetime)}
         </Text>
       </View>
       <View style={styles.logStatus}>
         <Ionicons
-          name={log.status === 'success' ? 'checkmark-circle' : 'close-circle'}
+          name={log.status === 'success' ? 'checkmark-circle' : log.status === 'pending' ? 'time-outline' : 'close-circle'}
           size={16}
-          color={log.status === 'success' ? theme.success : theme.error}
+          color={getStatusColor(log.status)}
         />
       </View>
     </Animatable.View>
@@ -192,7 +233,7 @@ export default function Dashboard() {
                 icon="id-card"
                 title="Present Credentials"
                 onPress={() => navigateTo('/present-credentials')}
-                color={theme.accent}
+                color="#5E5CE6" // Apple's purple
               />
               <ActionButton
                 icon="wallet"
@@ -204,7 +245,7 @@ export default function Dashboard() {
                 icon="create"
                 title="E-Signature"
                 onPress={() => navigateTo('/e-sign')}
-                color="#5E5CE6" // Apple's purple
+                color="#FF2D55" // Apple's pink
               />
             </View>
 
@@ -254,9 +295,23 @@ export default function Dashboard() {
                 </TouchableOpacity>
               </View>
 
-              {recentLogs.map(log => (
-                <LogItem key={log.id} log={log} />
-              ))}
+              {logsLoading ? (
+                <View style={styles.logsLoadingContainer}>
+                  <ActivityIndicator size="small" color={theme.primary} />
+                  <Text style={[styles.logsLoadingText, { color: theme.textSecondary }]}>Loading...</Text>
+                </View>
+              ) : recentLogs.length > 0 ? (
+                recentLogs.map(log => (
+                  <LogItem key={log.id} log={log} />
+                ))
+              ) : (
+                <View style={styles.noLogsContainer}>
+                  <Text style={[styles.noLogsText, { color: theme.textSecondary }]}>No activity logs found</Text>
+                  <TouchableOpacity onPress={loadRecentLogs}>
+                    <Text style={[styles.refreshText, { color: theme.primary }]}>Refresh</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </View>
         </Animatable.View>
@@ -410,5 +465,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 999,
+  },
+  logsLoadingContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  logsLoadingText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  noLogsContainer: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  noLogsText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  refreshText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 });

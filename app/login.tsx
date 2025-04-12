@@ -9,6 +9,7 @@ import { biometricAvailability } from '../services/Authentication';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
 import LottieView from 'lottie-react-native';
+import LogService from '@/services/LogService';
 
 export default function PinLogin() {
     const { theme, isDarkMode } = useTheme();
@@ -20,6 +21,9 @@ export default function PinLogin() {
     const [isTransitioning, setIsTransitioning] = useState(false);
     const MAX_ATTEMPTS = 5;
     const lottieRef = useRef<LottieView>(null);
+    
+    // Initialize LogService
+    const logService = LogService.getInstance();
 
     useEffect(() => {
         const checkForcePin = async () => {
@@ -41,6 +45,22 @@ export default function PinLogin() {
         };
 
         checkForcePin();
+        
+        // Initialize LogService
+        const initLogService = async () => {
+            try {
+                await logService.initialize();
+            } catch (error) {
+                console.error('Error initializing LogService:', error);
+            }
+        };
+        
+        initLogService();
+        
+        // Cleanup function
+        return () => {
+            logService.close();
+        };
     }, [authState]);
 
     const handleBiometricAuth = async () => {
@@ -52,6 +72,13 @@ export default function PinLogin() {
                 lottieRef.current.play();
             }
 
+            // Log biometric authentication attempt
+            await logService.createLog({
+                transaction_type: 'authentication',
+                status: 'pending',
+                details: 'Attempting biometric authentication'
+            });
+
             const biometricStatus = await biometricAvailability();
             console.log('Attempting biometric auth:', biometricStatus);
 
@@ -60,9 +87,24 @@ export default function PinLogin() {
                 console.log('Biometric auth result:', success);
                 
                 if (success) {
+                    // Log successful authentication
+                    await logService.createLog({
+                        transaction_type: 'authentication',
+                        status: 'success',
+                        details: `Successfully authenticated with biometrics (${biometricStatus.biometricType})`
+                    });
+                    
                     router.replace('/home');
                 } else {
                     setIsScanning(false);
+                    
+                    // Log failed authentication
+                    await logService.createLog({
+                        transaction_type: 'authentication',
+                        status: 'failed',
+                        details: 'Biometric authentication failed'
+                    });
+                    
                     Alert.alert(
                         'Authentication Failed',
                         'Please try again or use your PIN.',
@@ -71,6 +113,14 @@ export default function PinLogin() {
                 }
             } else {
                 setIsScanning(false);
+                
+                // Log biometric unavailability
+                await logService.createLog({
+                    transaction_type: 'authentication',
+                    status: 'failed',
+                    details: 'Biometrics unavailable on device'
+                });
+                
                 Alert.alert(
                     'Biometrics Unavailable',
                     'Please enable biometrics in your device settings.',
@@ -86,6 +136,13 @@ export default function PinLogin() {
         } catch (error) {
             console.error('Biometric authentication error:', error);
             setIsScanning(false);
+            
+            // Log error
+            await logService.createLog({
+                transaction_type: 'authentication',
+                status: 'failed',
+                details: `Biometric authentication error: ${error instanceof Error ? error.message : String(error)}`
+            });
         }
     };
 
@@ -107,12 +164,34 @@ export default function PinLogin() {
 
     const validatePin = async (inputPin: string) => {
         try {
+            // Log PIN authentication attempt
+            await logService.createLog({
+                transaction_type: 'authentication',
+                status: 'pending',
+                details: 'Attempting PIN authentication'
+            });
+            
             const isValid = await signIn(inputPin);
             if (isValid) {
+                // Log successful authentication
+                await logService.createLog({
+                    transaction_type: 'authentication',
+                    status: 'success',
+                    details: 'Successfully authenticated with PIN'
+                });
+                
                 router.replace('/home');
             } else {
                 setAttempts(prev => {
                     const updatedAttempts = prev + 1;
+                    
+                    // Log failed authentication attempt
+                    logService.createLog({
+                        transaction_type: 'authentication',
+                        status: 'failed',
+                        details: `PIN authentication failed. Attempt ${updatedAttempts} of ${MAX_ATTEMPTS}`
+                    });
+                    
                     if (updatedAttempts >= MAX_ATTEMPTS) {
                         handleMaxAttemptsReached();
                     } else {
@@ -127,12 +206,27 @@ export default function PinLogin() {
             }
         } catch (error) {
             console.error('PIN validation error:', error);
+            
+            // Log error
+            await logService.createLog({
+                transaction_type: 'authentication',
+                status: 'failed',
+                details: `PIN validation error: ${error instanceof Error ? error.message : String(error)}`
+            });
+            
             Alert.alert('Error', 'Failed to verify PIN');
             setPin('');
         }
     };
 
     const handleMaxAttemptsReached = async () => {
+        // Log account lockout
+        await logService.createLog({
+            transaction_type: 'authentication',
+            status: 'failed',
+            details: `Account locked after ${MAX_ATTEMPTS} failed PIN attempts`
+        });
+        
         await unRegister();
         Alert.alert(
             'Account Locked',

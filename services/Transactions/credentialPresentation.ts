@@ -6,9 +6,16 @@ import { createSdJwt, SdJwt } from '../Credentials/SdJwtVc';
 import { CredentialStorage } from '../credentialStorage';
 import { storedValueKeys } from '../Utils/enums';
 import { getDbEncryptionKey } from '../Utils/crypto';
+import LogService from '../LogService';
 import { Validator } from 'jsonschema';
 
 const TRIN_LIB_SERVER_ID = 'lib-verification-service-123';
+
+// Initialize LogService
+const logService = LogService.getInstance();
+logService.initialize().catch(error => {
+  console.error("Failed to initialize LogService in credential presentation:", error);
+});
 
 type DescriptorMap = {
     id: string;
@@ -24,124 +31,230 @@ type PresentationSubmission = {
 
 export async function retrieve_authorization_request(request_uri: string) {
     console.log('[Auth Request] Retrieving authorization request');
-    const response = await fetch(request_uri);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch authorization request: ${response.status}`);
+    try {
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'pending',
+            details: 'Retrieving authorization request',
+        });
+
+        const response = await fetch(request_uri);
+        if (!response.ok) {
+            const errorMsg = `Failed to fetch authorization request: ${response.status}`;
+            await logService.createLog({
+                transaction_type: 'credential_presentation',
+                status: 'failed',
+                details: errorMsg
+            });
+            throw new Error(errorMsg);
+        }
+        
+        const client_id = await SecureStore.getItemAsync(storedValueKeys.VERIFIER_CLIENT_ID_KEY);
+        if (client_id == TRIN_LIB_SERVER_ID) {
+            await logService.createLog({
+                transaction_type: 'credential_presentation',
+                status: 'pending',
+                details: 'Processing internal library server request',
+                relying_party: TRIN_LIB_SERVER_ID
+            });
+            trin_send_presentation(await response.json());
+        }
+        
+        const encoded_jwt = await response.text();
+        const decoded_jwt = await decode_jwt(encoded_jwt);
+        
+        // Extract verifier info for logging
+        const verifier = decoded_jwt.client_id || 'Unknown Verifier';
+        
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'pending',
+            details: 'Authorization request decoded, preparing presentation',
+            relying_party: verifier
+        });
+        
+        await send_presentation(decoded_jwt);
+    } catch (error) {
+        console.error('[Auth Request] Error:', error);
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'failed',
+            details: `Authorization request retrieval failed: ${error instanceof Error ? error.message : String(error)}`
+        });
     }
-    const client_id = await SecureStore.getItemAsync(storedValueKeys.VERIFIER_CLIENT_ID_KEY);
-    if (client_id == TRIN_LIB_SERVER_ID) {
-        trin_send_presentation(await response.json());
-    }
-    const encoded_jwt = await response.text();
-    const decoded_jwt = await decode_jwt(encoded_jwt);
-    await send_presentation(decoded_jwt);
 }
 
 async function trin_send_presentation(presentation_definition: JSON) {
-
+    try {
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'pending',
+            details: 'Processing internal presentation',
+            relying_party: TRIN_LIB_SERVER_ID
+        });
+        
+        // Implementation to be added
+        
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'success',
+            details: 'Internal presentation completed',
+            relying_party: TRIN_LIB_SERVER_ID
+        });
+    } catch (error) {
+        console.error('[Presentation] Error with internal presentation:', error);
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'failed',
+            details: `Internal presentation failed: ${error instanceof Error ? error.message : String(error)}`,
+            relying_party: TRIN_LIB_SERVER_ID
+        });
+    }
 }
 
 async function send_presentation(decoded_jwt: Record<string, unknown>) {
-    const response_uri = decoded_jwt.response_uri as string;
-    const client_id = decoded_jwt.client_id;
-    const state = decoded_jwt.state;
-    const presentation_definition = decoded_jwt.presentation_definition as Record<string, unknown>;
-    const presentation_definition_id = presentation_definition.id as string;
-    const input_descriptors = presentation_definition.input_descriptors as Record<string, unknown>[]
+    try {
+        const response_uri = decoded_jwt.response_uri as string;
+        const client_id = decoded_jwt.client_id;
+        const state = decoded_jwt.state;
+        const presentation_definition = decoded_jwt.presentation_definition as Record<string, unknown>;
+        const presentation_definition_id = presentation_definition.id as string;
+        const input_descriptors = presentation_definition.input_descriptors as Record<string, unknown>[]
 
-    const response_mode = decoded_jwt.response_mode;
-    const client_metadata = decoded_jwt.client_metadata;
-    const nonce = decoded_jwt.nonce;
+        const response_mode = decoded_jwt.response_mode;
+        const client_metadata = decoded_jwt.client_metadata;
+        const nonce = decoded_jwt.nonce;
 
-    /**
-     * Not required to be included in presentation definition.
-     * If present, show these to user.
-     */
-    const presentation_name = presentation_definition?.name;
-    const presentation_purpose = presentation_definition?.purpose;
+        /**
+         * Not required to be included in presentation definition.
+         * If present, show these to user.
+         */
+        const presentation_name = presentation_definition?.name;
+        const presentation_purpose = presentation_definition?.purpose;
 
-    /**
-     * Not required to be included in presentation definition .
-     * This field specifies the algorithms/proof type supported for the specified
-     * credential format. We will not use it and assume for our formats (SD-JWT) 
-     * the algorithms we use are supported as they are common.
-     * */
-    const presentation_format = presentation_definition?.format;
+        /**
+         * Not required to be included in presentation definition .
+         * This field specifies the algorithms/proof type supported for the specified
+         * credential format. We will not use it and assume for our formats (SD-JWT) 
+         * the algorithms we use are supported as they are common.
+         * */
+        const presentation_format = presentation_definition?.format;
 
-    const presentation_submission: PresentationSubmission = {
-        "id": Crypto.randomUUID(),
-        "definition_id": presentation_definition_id,
-        "descriptor_map": []
-    }
+        const presentation_submission: PresentationSubmission = {
+            "id": Crypto.randomUUID(),
+            "definition_id": presentation_definition_id,
+            "descriptor_map": []
+        }
 
-    type info_requested = {
-        name: string;
-        purpose: string;
-    };
-    // Information to be shown to user
-    const all_info_requested: info_requested[] = [];
-    /**
-     * Each descriptor represents a different credential requested.
-     * Each descriptor contains "constratins" and constraints contains fields[].
-     * Each value in fields[] represents an attribute requested from that credential type.
-     * Each attribute is described by a path[] and filter. Filter.constant defines the ID of the cred requested.
-     * path[0] represents the location of that attribute (and the attriubte name) on the credential.
-     * 
-     * Search credentials based on JSONPath (to see if any match), then use filter property if its there (its optional) to filter results.
-     * 
-     */
-    for (const descriptor of input_descriptors as Record<string, any>[]) {
-        console.log("Descriptor: ", descriptor);
-        const descriptor_name = descriptor.name as string;
-        const descriptor_purpose = descriptor.purpose as string;
-        all_info_requested.push({
-            name: descriptor_name,
-            purpose: descriptor_purpose
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'pending',
+            details: `Processing presentation request: ${presentation_name || presentation_purpose || 'Unnamed request'}`,
+            relying_party: client_id as string
         });
-        const matches = await findMatchingCredentials(descriptor);
 
-        if (matches === null) {
-            console.log("No fields found in descriptor: ", descriptor);
-            let formats = Object.keys(descriptor?.format);
-            if (!formats) {
-                formats = presentation_definition?.format as string[];
+        type info_requested = {
+            name: string;
+            purpose: string;
+        };
+        // Information to be shown to user
+        const all_info_requested: info_requested[] = [];
+        /**
+         * Each descriptor represents a different credential requested.
+         * Each descriptor contains "constratins" and constraints contains fields[].
+         * Each value in fields[] represents an attribute requested from that credential type.
+         * Each attribute is described by a path[] and filter. Filter.constant defines the ID of the cred requested.
+         * path[0] represents the location of that attribute (and the attriubte name) on the credential.
+         * 
+         * Search credentials based on JSONPath (to see if any match), then use filter property if its there (its optional) to filter results.
+         * 
+         */
+        for (const descriptor of input_descriptors as Record<string, any>[]) {
+            console.log("Descriptor: ", descriptor);
+            const descriptor_name = descriptor.name as string;
+            const descriptor_purpose = descriptor.purpose as string;
+            all_info_requested.push({
+                name: descriptor_name,
+                purpose: descriptor_purpose
+            });
+            const matches = await findMatchingCredentials(descriptor);
+
+            if (matches === null) {
+                console.log("No fields found in descriptor: ", descriptor);
+                await logService.createLog({
+                    transaction_type: 'credential_presentation',
+                    status: 'failed',
+                    details: `No fields found in descriptor: ${descriptor_name || 'unnamed'}`,
+                    relying_party: client_id as string
+                });
+                
+                let formats = Object.keys(descriptor?.format);
+                if (!formats) {
+                    formats = presentation_definition?.format as string[];
+                }
+
+                // TODO: Search for credentials based on format in presentation definition.
             }
+            else if (matches.credential_string.length === 0) {
+                console.log("No matching credentials found for descriptor: ", descriptor);
+                await logService.createLog({
+                    transaction_type: 'credential_presentation',
+                    status: 'failed',
+                    details: `No matching credentials found for: ${descriptor_name || 'unnamed'}`,
+                    relying_party: client_id as string
+                });
+                return;
+            }
+            const input_descriptor_id = descriptor.id;
+            const descriptor_map_format = descriptor.format as string;
+            const descriptor_map_path = descriptor.path as string;
+            presentation_submission.descriptor_map.push({
+                "id": input_descriptor_id as string,
+                "format": descriptor_map_format,
+                "path": descriptor_map_path
+            })
+            // const sd_jwt_presentation = generatePresentation();
+        }
 
-            // TODO: Search for credentials based on format in presentation definition.
-        }
-        else if (matches.credential_string.length === 0) {
-            console.log("No matching credentials found for descriptor: ", descriptor);
-            return;
-        }
-        const input_descriptor_id = descriptor.id;
-        const descriptor_map_format = descriptor.format as string;
-        const descriptor_map_path = descriptor.path as string;
-        presentation_submission.descriptor_map.push({
-            "id": input_descriptor_id as string,
-            "format": descriptor_map_format,
-            "path": descriptor_map_path
-        })
-        // const sd_jwt_presentation = generatePresentation();
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'success',
+            details: `Presentation prepared with ${presentation_submission.descriptor_map.length} descriptor(s)`,
+            relying_party: client_id as string
+        });
+
+        // const params = new URLSearchParams({
+        //     response_type: 'code'
+        // });
+
+        // const response = fetch(response_uri, {
+        //     method: 'POST',
+        //     headers: {
+        //         'Content-Type': 'application/x-www-form-urlencoded'
+        //     },
+        //     body: params.toString()
+        // })
+    } catch (error) {
+        console.error('[Presentation] Error:', error);
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'failed',
+            details: `Presentation failed: ${error instanceof Error ? error.message : String(error)}`
+        });
     }
-
-    // const params = new URLSearchParams({
-    //     response_type: 'code'
-    // });
-
-    // const response = fetch(response_uri, {
-    //     method: 'POST',
-    //     headers: {
-    //         'Content-Type': 'application/x-www-form-urlencoded'
-    //     },
-    //     body: params.toString()
-    // })
 }
 
 async function decode_jwt(encoded_jwt: string) {
     // Split the JWT parts
     const parts = encoded_jwt.split('.');
     if (parts.length !== 3) {
-        throw new Error('Invalid JWT format');
+        const error = 'Invalid JWT format';
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'failed',
+            details: error
+        });
+        throw new Error(error);
     }
 
     // Decode the payload part (second part)
@@ -162,7 +275,13 @@ async function createKbJwt(aud: string, sdHash: string, nonce: string): Promise<
         const publicKeyJson = await SecureStore.getItemAsync("pub-key");
 
         if (!privateKeyJson || !publicKeyJson) {
-            throw new Error("Keys not found in secure storage");
+            const error = "Keys not found in secure storage";
+            await logService.createLog({
+                transaction_type: 'credential_presentation',
+                status: 'failed',
+                details: error
+            });
+            throw new Error(error);
         }
 
         const privateKey = JSON.parse(privateKeyJson);
@@ -193,7 +312,13 @@ async function createKbJwt(aud: string, sdHash: string, nonce: string): Promise<
         // Sign the input
         const signature = await sdJwt.signJwt(signingInput);
         if (!signature) {
-            throw new Error("JWT signature could not be generated");
+            const error = "JWT signature could not be generated";
+            await logService.createLog({
+                transaction_type: 'credential_presentation',
+                status: 'failed',
+                details: error
+            });
+            throw new Error(error);
         }
 
         // Encode the signature and create the full JWT
@@ -204,6 +329,11 @@ async function createKbJwt(aud: string, sdHash: string, nonce: string): Promise<
         return jwt;
     } catch (error) {
         console.error('[KB-JWT] Error creating Key Binding JWT:', error);
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'failed',
+            details: `Error creating Key Binding JWT: ${error instanceof Error ? error.message : String(error)}`
+        });
         throw error;
     }
 }
@@ -279,9 +409,21 @@ async function findMatchingCredentials(descriptor: Record<string, any>): Promise
                 matches_and_req_claims.requested_claims.push(firstMatchingPath);
             }
         }
+        
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'success',
+            details: `Found ${matches_and_req_claims.credential_string.length} matching credential(s) for presentation`
+        });
+        
         return matches_and_req_claims;
     } catch (error) {
         console.error("Error finding matching credentials: ", error);
+        await logService.createLog({
+            transaction_type: 'credential_presentation',
+            status: 'failed',
+            details: `Error finding matching credentials: ${error instanceof Error ? error.message : String(error)}`
+        });
         return {
             credential_string: [],
             requested_claims: []
@@ -293,7 +435,7 @@ async function findMatchingCredentials(descriptor: Record<string, any>): Promise
 }
 
 async function generateDescriptorMap() {
-
+    // To be implemented
 }
 
 async function generatePresentation(credential_type: string | string[], claims: string | string[]) {

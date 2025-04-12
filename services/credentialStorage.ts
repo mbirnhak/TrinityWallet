@@ -1,20 +1,41 @@
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
-import { credentials, logs } from '@/db/schema';
+import { credentials } from '@/db/schema';
 import * as schema from '@/db/schema';
 import * as SQLite from 'expo-sqlite';
 import { createSdJwt } from './Credentials/SdJwtVc';
 import { constants } from './Utils/enums';
 import { eq, isNotNull, or, sql } from 'drizzle-orm';
+import LogService from './LogService';
+
+// A helper to create reusable safe database operations
+const withDB = async <T>(dbEncryptionKey: string, operation: (db: any) => Promise<T>): Promise<T> => {
+    // Open a new connection for each operation
+    const db = SQLite.openDatabaseSync(constants.DBNAME);
+    db.execSync(`PRAGMA key = "x'${dbEncryptionKey}'"`);
+    const drizzleDb = drizzle(db, { schema });
+    
+    try {
+        // Execute the operation
+        const result = await operation(drizzleDb);
+        return result;
+    } finally {
+        // Clean up - always close the database
+        try {
+            db.closeSync();
+        } catch (error) {
+            console.error("Error closing database connection:", error);
+        }
+    }
+};
 
 export class CredentialStorage {
-    private db;
-    private drizzleDb;
+    private dbEncryptionKey: string;
+    private logService: LogService;
 
     constructor(dbEncryptionKey: string) {
-        this.db = SQLite.openDatabaseSync(constants.DBNAME);
-        this.db.execSync(`PRAGMA key = "x'${dbEncryptionKey}'"`);
-        this.drizzleDb = drizzle(this.db, { schema });
+        this.dbEncryptionKey = dbEncryptionKey;
+        this.logService = LogService.getInstance();
     }
 
     async storeCredential(credential_string: string) {
@@ -27,6 +48,15 @@ export class CredentialStorage {
                 return true;
             } else {
                 console.log("Credential format not supported!");
+                try {
+                    await this.logService.createLog({
+                        transaction_type: 'credential_issuance',
+                        status: 'failed',
+                        details: 'Credential format not supported'
+                    });
+                } catch (error) {
+                    console.error("Error logging credential format not supported:", error);
+                }
                 return false;
             }
         }
@@ -35,6 +65,15 @@ export class CredentialStorage {
     private async storeMdocCredential(credential_string: string) {
         const credential_format = "mdoc";
         // TODO: implement this later
+        try {
+            await this.logService.createLog({
+                transaction_type: 'credential_issuance',
+                status: 'failed',
+                details: 'MDOC credential format not implemented yet'
+            });
+        } catch (error) {
+            console.error("Error logging MDOC not implemented:", error);
+        }
         return false;
     }
 
@@ -45,6 +84,15 @@ export class CredentialStorage {
             const public_key_string = await SecureStore.getItemAsync("pub-key");
             if (!public_key_string || !private_key_string) {
                 console.log("Missing public or private key for storing credentials");
+                try {
+                    await this.logService.createLog({
+                        transaction_type: 'credential_issuance',
+                        status: 'failed',
+                        details: 'Missing public or private key for storing credentials'
+                    });
+                } catch (error) {
+                    console.error("Error logging missing keys:", error);
+                }
                 return false;
             }
             const private_key = JSON.parse(private_key_string);
@@ -59,102 +107,133 @@ export class CredentialStorage {
 
             if (!credential_claims || !parsed_credential || !iss_date || !exp_date) {
                 console.log("Missing fields for storing credentials");
+                try {
+                    await this.logService.createLog({
+                        transaction_type: 'credential_issuance',
+                        status: 'failed',
+                        details: 'Missing required fields in credential'
+                    });
+                } catch (error) {
+                    console.error("Error logging missing fields:", error);
+                }
                 return false;
             }
 
-            await this.drizzleDb.insert(credentials).values(
-                {
-                    credential_string: credential_string,
-                    parsed_credential: parsed_credential,
-                    credential_format: credential_format,
-                    credential_claims: credential_claims,
-                    public_key: public_key,
-                    private_key: private_key,
-                    iss_date: iss_date,
-                    exp_date: exp_date
-                }
-            );
+            // Extract issuer info for logging
+            const issuer = credential_claims.iss || 'Unknown Issuer';
+
+            // Use withDB to handle database operations safely
+            await withDB(this.dbEncryptionKey, async (db) => {
+                return await db.insert(credentials).values(
+                    {
+                        credential_string: credential_string,
+                        parsed_credential: parsed_credential,
+                        credential_format: credential_format,
+                        credential_claims: credential_claims,
+                        public_key: public_key,
+                        private_key: private_key,
+                        iss_date: iss_date,
+                        exp_date: exp_date
+                    }
+                );
+            });
+
+            // Log successful credential storage
+            try {
+                await this.logService.createLog({
+                    transaction_type: 'credential_issuance',
+                    status: 'success',
+                    details: `Stored ${credential_format} credential`,
+                    relying_party: issuer
+                });
+            } catch (error) {
+                console.error("Error logging successful credential storage:", error);
+            }
+
             return true;
         } catch (error) {
             console.log("Error Storing Credential(s)");
+            try {
+                await this.logService.createLog({
+                    transaction_type: 'credential_issuance',
+                    status: 'failed',
+                    details: `Error storing credential: ${error instanceof Error ? error.message : String(error)}`
+                });
+            } catch (logError) {
+                console.error("Error logging credential storage failure:", logError);
+            }
             return false;
         }
     }
 
     async retrieveCredentials() {
         try {
-            const credentials = await this.drizzleDb.query.credentials.findMany();
-            return credentials;
+            return await withDB(this.dbEncryptionKey, async (db) => {
+                return await db.query.credentials.findMany();
+            });
         } catch (error) {
             console.log("Error retrieving credentials: ", error);
+            try {
+                await this.logService.createLog({
+                    transaction_type: 'error',
+                    status: 'failed',
+                    details: `Error retrieving credentials: ${error instanceof Error ? error.message : String(error)}`
+                });
+            } catch (logError) {
+                console.error("Error logging credential retrieval failure:", logError);
+            }
             return null;
         }
     }
 
-    // async retrieveCredentialsByJsonPath(credential_paths: string[]) {
-    //     try {
-    //         // Build OR conditions for each path in the array
-    //         const orConditions = credential_paths.map(path =>
-    //             isNotNull(
-    //                 sql`json_extract(credential_claims, ${path})`
-    //             )
-    //         );
-    //         // Combine the conditions using OR
-    //         const whereCondition = or(...orConditions);
-
-    //         const matching_credentials = await this.drizzleDb.
-    //             select({
-    //                 credential_string: credentials.credential_string,
-    //                 credential_claims: credentials.credential_claims
-    //             }).
-    //             from(credentials).
-    //             where(whereCondition);
-    //         return matching_credentials;
-    //     } catch (error) {
-    //         console.log("Error retrieving credential: ", error);
-    //         return null;
-    //     }
-    // }
     async retrieveCredentialsByJsonPath(credential_paths: string[]) {
         try {
-            // First, create a CASE expression to find the first matching path
-            const pathCaseExpression = credential_paths.map((path, index) =>
-                sql`WHEN json_extract(credential_claims, ${path}) IS NOT NULL THEN ${path}`
-            ).reduce((acc, curr) => sql`${acc} ${curr}`, sql``);
+            return await withDB(this.dbEncryptionKey, async (db) => {
+                // First, create a CASE expression to find the first matching path
+                const pathCaseExpression = credential_paths.map((path) =>
+                    sql`WHEN json_extract(credential_claims, ${path}) IS NOT NULL THEN ${path}`
+                ).reduce((acc, curr) => sql`${acc} ${curr}`, sql``);
 
-            // Select the credential string, claims, and the first matching path
-            const matching_credentials = await this.drizzleDb
-                .select({
-                    credential_string: credentials.credential_string,
-                    credential_claims: credentials.credential_claims,
-                    matching_path: sql<string>`
-                        CASE
-                            ${pathCaseExpression}
-                            ELSE NULL
-                        END
-                    `
-                })
-                .from(credentials)
-                // Only return rows where at least one path matches
-                .where(
-                    isNotNull(sql`
-                        CASE
-                            ${pathCaseExpression}
-                            ELSE NULL
-                        END
-                    `)
-                );
-
-            return matching_credentials;
+                // Select the credential string, claims, and the first matching path
+                return await db
+                    .select({
+                        credential_string: credentials.credential_string,
+                        credential_claims: credentials.credential_claims,
+                        matching_path: sql<string>`
+                            CASE
+                                ${pathCaseExpression}
+                                ELSE NULL
+                            END
+                        `
+                    })
+                    .from(credentials)
+                    // Only return rows where at least one path matches
+                    .where(
+                        isNotNull(sql`
+                            CASE
+                                ${pathCaseExpression}
+                                ELSE NULL
+                            END
+                        `)
+                    );
+            });
         } catch (error) {
             console.log("Error retrieving credential: ", error);
+            try {
+                await this.logService.createLog({
+                    transaction_type: 'error',
+                    status: 'failed',
+                    details: `Error retrieving credentials by JSON path: ${error instanceof Error ? error.message : String(error)}`
+                });
+            } catch (logError) {
+                console.error("Error logging credential retrieval by JSON path failure:", logError);
+            }
             return null;
         }
     }
 
     public close(): void {
-        if (this.db) {
-            this.db.closeSync();
-        }
+        // No need to close anything since we're using withDB pattern
+        // This is just a placeholder for backward compatibility
     }
 }
