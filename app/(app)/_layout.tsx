@@ -1,13 +1,13 @@
-import { Redirect, Tabs, useRouter } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import { View, StyleSheet } from 'react-native';
 import LottieView from 'lottie-react-native';
 import * as Font from 'expo-font';
 import { useEffect } from "react";
-import { useCredentialDeepLinkHandler } from '../../services/credentialIssuance';
 import { Ionicons } from '@expo/vector-icons';
 
-// Define theme colors for reuse
+// Define theme colors for reuse (keeping for backward compatibility)
 export const theme = {
   dark: '#000000',
   darker: '#1C1C1E',
@@ -25,19 +25,19 @@ export const theme = {
 
 export default function ProtectedLayout() {
   const { authState, isLoading } = useAuth();
-  const router = useRouter();
-  useCredentialDeepLinkHandler();
+  const { theme: currentTheme } = useTheme();
 
   useEffect(() => {
     Font.loadAsync({
       'Poppins-Regular': require('../../assets/fonts/Poppins-Regular.ttf'),
       'Poppins-Bold': require('../../assets/fonts/Poppins-Bold.ttf'),
+      'Poppins-Medium': require('../../assets/fonts/Poppins-Medium.ttf'),
     });
   }, []);
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: currentTheme.dark }]}>
         <LottieView
           source={require('../../assets/fonts/loading.json')}
           autoPlay
@@ -57,26 +57,26 @@ export default function ProtectedLayout() {
       screenOptions={{
         headerShown: false,
         headerStyle: {
-          backgroundColor: theme.dark,
+          backgroundColor: currentTheme.dark,
           borderBottomWidth: 0.5,
-          borderBottomColor: theme.border,
+          borderBottomColor: currentTheme.border,
         },
-        headerTintColor: theme.text,
+        headerTintColor: currentTheme.text,
         headerTitleStyle: {
           fontFamily: 'Poppins-Bold',
           fontSize: 17,
-          color: theme.text,
+          color: currentTheme.text,
         },
         tabBarStyle: {
-          backgroundColor: theme.dark,
+          backgroundColor: currentTheme.dark,
           borderTopWidth: 0.5,
-          borderTopColor: theme.border,
+          borderTopColor: currentTheme.border,
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.textSecondary,
+        tabBarActiveTintColor: currentTheme.primary,
+        tabBarInactiveTintColor: currentTheme.textSecondary,
         tabBarLabelStyle: {
           fontFamily: 'Poppins-Medium',
           fontSize: 12,
@@ -86,20 +86,20 @@ export default function ProtectedLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          title: "Trinity Wallet",
-          tabBarLabel: "Home",
+          title: "Dashboard",
+          tabBarLabel: "Dashboard",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="wallet" size={size} color={color} />
+            <Ionicons name="home" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="transactions"
+        name="credentials"
         options={{
-          title: "Transactions",
-          tabBarLabel: "Transactions",
+          title: "Credentials",
+          tabBarLabel: "Credentials",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="swap-horizontal" size={size} color={color} />
+            <Ionicons name="wallet" size={size} color={color} />
           ),
         }}
       />
@@ -113,6 +113,36 @@ export default function ProtectedLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="logs"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="request-credentials"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="present-credentials"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="e-sign"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="library-rental"
+        options={{
+          href: null, // Don't show in the tab bar
+        }}
+      />
     </Tabs>
   );
 }
@@ -122,7 +152,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.dark,
   },
   lottieAnimation: {
     width: 200,

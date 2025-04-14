@@ -1,4 +1,4 @@
-import { SDJwtVcInstance, SdJwtVcPayload } from '@sd-jwt/sd-jwt-vc';
+import { SDJWTVCConfig, SDJwtVcInstance, SdJwtVcPayload } from '@sd-jwt/sd-jwt-vc';
 import type { DisclosureFrame, kbHeader, KBOptions, kbPayload, SDJWTCompact } from '@sd-jwt/types';
 import { createSignerVerifier, digest, ES256, generateSalt } from './utils';
 
@@ -12,34 +12,31 @@ export interface SdJwt {
     getClaims: (endcodedSDJwt: string) => Promise<unknown>;
     decodeCredential: (endcodedSDJwt: SDJWTCompact) => Promise<"" | any>;
 }
-interface SDJwt<H = Record<string, unknown>, P = Record<string, unknown>, KH = kbHeader, KP = kbPayload> {
-    header: H;
-    payload: P;
-    kb?: {
-        header: KH;
-        payload: KP;
-    };
-}
 
 // Function to create an SDJwt instance and provide utility methods for SDJwt operations
-export const createSdJwt = async (privateKeyInput?: object, publicKeyInput?: object) => {
-    console.log("Before creating signer and veirifer")
+export const createSdJwt = async (privateKeyInput?: object, publicKeyInput?: object, kb: boolean = false) => {
     // Create a signer and verifier for issuing and verifying SDJwt credentials
     const { signer, verifier, privateKey, publicKey } = await createSignerVerifier(
         (privateKeyInput ? privateKeyInput : undefined),
         (publicKeyInput ? publicKeyInput : undefined)
     );
-    console.log("After creating signer and verifier: ");
 
-    // Initialize the SDJwt instance with the required configuration
-    const sdjwt = new SDJwtVcInstance({
+    const config: SDJWTVCConfig = {
         signer,
         verifier,
         signAlg: ES256.alg,
         hasher: digest,
         hashAlg: 'sha-256',
         saltGenerator: generateSalt,
-    });
+    }
+    if (kb === true) {
+        config.kbSignAlg = ES256.alg;
+        config.kbSigner = signer;
+        config.kbVerifier = verifier;
+    }
+    // Initialize the SDJwt instance with the required configuration
+    const sdjwt = new SDJwtVcInstance(config);
+
 
     // Return an object containing utility methods to interact with SDJwt
     return {
@@ -97,7 +94,7 @@ export const createSdJwt = async (privateKeyInput?: object, publicKeyInput?: obj
             try {
                 return await sdjwt.getClaims(endcodedSDJwt)
             } catch (error) {
-                console.error("Error retrieving claims: ", error);
+                console.log("Error retrieving claims: ", error);
                 return "";
             }
         },
@@ -105,7 +102,7 @@ export const createSdJwt = async (privateKeyInput?: object, publicKeyInput?: obj
             try {
                 return await sdjwt.decode(endcodedSDJwt);
             } catch (error) {
-                console.error("Error decoding credential: ", error);
+                console.log("Error decoding credential: ", error);
                 return "";
             }
         }

@@ -1,102 +1,216 @@
-// services/credentialStorage.ts
-import * as FileSystem from 'expo-file-system';
+import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
-
-export interface StoredCredential {
-    jwt_vc?: string;
-    mdoc?: string;
-    timestamp: number;
-}
-
-const CREDENTIAL_DIRECTORY = `${FileSystem.documentDirectory}credentials/`;
-const METADATA_KEY = 'credential_metadata';
+import { credentials, logs } from '@/db/schema';
+import * as schema from '@/db/schema';
+import * as SQLite from 'expo-sqlite';
+import { createSdJwt } from './Credentials/SdJwtVc';
+import { constants } from './Utils/enums';
+import { eq, isNotNull, getTableColumns, sql } from 'drizzle-orm';
 
 export class CredentialStorage {
-    static async initialize() {
-        try {
-            const dirInfo = await FileSystem.getInfoAsync(CREDENTIAL_DIRECTORY);
-            if (!dirInfo.exists) {
-                await FileSystem.makeDirectoryAsync(CREDENTIAL_DIRECTORY, {
-                    intermediates: true
-                });
-                console.log('[Storage] Created credentials directory');
+    private db;
+    private drizzleDb;
+
+    constructor(dbEncryptionKey: string) {
+        this.db = SQLite.openDatabaseSync(constants.DBNAME);
+        this.db.execSync(`PRAGMA key = "x'${dbEncryptionKey}'"`);
+        this.drizzleDb = drizzle(this.db, { schema });
+    }
+
+    async storeCredential(credential_string: string) {
+        const sdjwt_success = await this.storeSdJwtCredential(credential_string);
+        if (sdjwt_success == true) {
+            return true;
+        } else {
+            const mdoc_success = await this.storeMdocCredential(credential_string);
+            if (mdoc_success == true) {
+                return true;
+            } else {
+                console.log("Credential format not supported!");
+                return false;
             }
-        } catch (error) {
-            console.error('[Storage] Error initializing storage:', error);
-            throw error;
         }
     }
 
-    static async storeCredential(format: 'jwt_vc' | 'mdoc', credential: any) {
+    private async storeMdocCredential(credential_string: string) {
+        const credential_format = "mdoc";
+        // TODO: implement this later
+        return false;
+    }
+
+    private async storeSdJwtCredential(credential_string: string): Promise<boolean> {
         try {
-            await this.initialize();
+            const credential_format = "sd_jwt_vc";
+            const private_key_string = await SecureStore.getItemAsync("priv-key");
+            const public_key_string = await SecureStore.getItemAsync("pub-key");
+            if (!public_key_string || !private_key_string) {
+                console.log("Missing public or private key for storing credentials");
+                return false;
+            }
+            const private_key = JSON.parse(private_key_string);
+            const public_key = JSON.parse(public_key_string);
 
-            const filename = `${CREDENTIAL_DIRECTORY}${format}.txt`;
-            const credentialStr = typeof credential === 'string' 
-                ? credential 
-                : JSON.stringify(credential);
+            const sdjwt_parser = await createSdJwt(private_key, public_key);
+            const credential_claims: Record<string, any> = await sdjwt_parser.getClaims(credential_string) as Record<string, any>;
+            const parsed_credential = await sdjwt_parser.decodeCredential(credential_string);
+            let iss_date, exp_date;
+            iss_date = credential_claims.iat;
+            exp_date = credential_claims.exp;
 
-            await FileSystem.writeAsStringAsync(filename, credentialStr, {
-                encoding: FileSystem.EncodingType.UTF8
-            });
-            console.log(`[Storage] Stored ${format} credential to file`);
+            if (!credential_claims || !parsed_credential || !iss_date || !exp_date) {
+                console.log("Missing fields for storing credentials");
+                return false;
+            }
 
-            // Update metadata
-            const metadata = await this.getMetadata() || { timestamp: Date.now() };
-            metadata[format] = true;
-            metadata.timestamp = Date.now();
-            
-            await SecureStore.setItemAsync(METADATA_KEY, JSON.stringify(metadata));
-            console.log('[Storage] Updated credential metadata');
-
+            await this.drizzleDb.insert(credentials).values(
+                {
+                    credential_string: credential_string,
+                    parsed_credential: parsed_credential,
+                    credential_format: credential_format,
+                    credential_claims: credential_claims,
+                    public_key: public_key,
+                    private_key: private_key,
+                    iss_date: iss_date,
+                    exp_date: exp_date
+                }
+            );
+            return true;
         } catch (error) {
-            console.error(`[Storage] Error storing ${format} credential:`, error);
-            throw error;
+            console.log("Error Storing Credential(s)");
+            return false;
         }
     }
 
-    static async retrieveCredential(format: 'jwt_vc' | 'mdoc'): Promise<string | null> {
+    async retrieveCredentials() {
         try {
-            const filename = `${CREDENTIAL_DIRECTORY}${format}.txt`;
-            const fileInfo = await FileSystem.getInfoAsync(filename);
-            
-            if (!fileInfo.exists) {
-                console.log(`[Storage] No ${format} credential found`);
-                return null;
-            }
-            
-            const content = await FileSystem.readAsStringAsync(filename, {
-                encoding: FileSystem.EncodingType.UTF8
-            });
-            
-            return content;
+            const credentials = await this.drizzleDb.query.credentials.findMany();
+            return credentials;
         } catch (error) {
-            console.error(`[Storage] Error retrieving ${format} credential:`, error);
+            console.log("Error retrieving credentials: ", error);
             return null;
         }
     }
 
-    static async getMetadata(): Promise<StoredCredential | null> {
+    async retrieveCredentialsByJsonPath(credential_paths: string[]) {
         try {
-            const metadata = await SecureStore.getItemAsync(METADATA_KEY);
-            return metadata ? JSON.parse(metadata) : null;
+            // First, create a CASE expression to find the first matching path
+            const pathCaseExpression = credential_paths.map((path, index) =>
+                sql`WHEN json_extract(credential_claims, ${path}) IS NOT NULL THEN ${path}`
+            ).reduce((acc, curr) => sql`${acc} ${curr}`, sql``);
+
+            // Create a similar CASE expression to get the matching value
+            const valueCaseExpression = credential_paths.map((path, index) =>
+                sql`WHEN json_extract(credential_claims, ${path}) IS NOT NULL THEN json_extract(credential_claims, ${path})`
+            ).reduce((acc, curr) => sql`${acc} ${curr}`, sql``);
+
+            // Select the credential string, claims, and the first matching path
+            const matching_credentials = await this.drizzleDb
+                .select({
+                    credential_id: credentials.id,
+                    matching_path: sql<string>`
+                        CASE
+                            ${pathCaseExpression}
+                            ELSE NULL
+                        END
+                    `,
+                    matching_value: sql<string>`
+                        CASE
+                            ${valueCaseExpression}
+                            ELSE NULL
+                        END
+                    `
+                })
+                .from(credentials)
+                // Only return rows where at least one path matches
+                .where(
+                    isNotNull(sql`
+                        CASE
+                            ${pathCaseExpression}
+                            ELSE NULL
+                        END
+                    `)
+                );
+
+            return matching_credentials;
         } catch (error) {
-            console.error('[Storage] Error getting metadata:', error);
+            console.log("Error retrieving credential: ", error);
             return null;
         }
     }
 
-    static async clearCredentials() {
+    async retrieveCredentialByFormat(credential_format: string) {
         try {
-            const dirInfo = await FileSystem.getInfoAsync(CREDENTIAL_DIRECTORY);
-            if (dirInfo.exists) {
-                await FileSystem.deleteAsync(CREDENTIAL_DIRECTORY);
-                await SecureStore.deleteItemAsync(METADATA_KEY);
-                console.log('[Storage] Cleared all credentials');
-            }
+            const retrievedCredentials = await this.drizzleDb
+                .select({
+                    credential_id: credentials.id
+                })
+                .from(credentials)
+                .where(eq(credentials.credential_format, credential_format));
+            return retrievedCredentials;
         } catch (error) {
-            console.error('[Storage] Error clearing credentials:', error);
-            throw error;
+            console.log("Error retrieving credentials: ", error);
+            return null;
+        }
+    }
+
+    async retrieveCredentialById(credential_id: number, columns: (keyof typeof credentials)[] = []) {
+        try {
+            // Set up the selection object conditionally
+            const selection = columns.length > 0
+                ? columns.reduce((acc, column) => {
+                    acc[column] = credentials[column];
+                    return acc;
+                }, {} as Record<string, any>)
+                : {};  // When undefined, select() will get all columns
+
+            // Single query with conditional selection
+            const retrievedCredential = await this.drizzleDb
+                .select(selection)
+                .from(credentials)
+                .where(eq(credentials.id, credential_id));
+
+            return retrievedCredential;
+        } catch (error) {
+            console.log("Error retrieving credentials: ", error);
+            return null;
+        }
+    }
+
+    async deleteCredentialById(credential_id: number) {
+        try {
+            await this.drizzleDb.delete(credentials).where(eq(credentials.id, credential_id));
+            return true;
+        } catch (error) {
+            console.log("Error deleting credential: ", error);
+            return false;
+        }
+    }
+
+    async deleteCredentialsById(credential_ids: number[]) {
+        try {
+            await this.drizzleDb.delete(credentials).where(
+                sql`${credentials.id} IN (${sql.join(credential_ids, ', ')})`
+            );
+            return true;
+        } catch (error) {
+            console.log("Error deleting credentials: ", error);
+            return false;
+        }
+    }
+
+    async deleteAllCredentials() {
+        try {
+            await this.drizzleDb.delete(credentials);
+            return true;
+        } catch (error) {
+            console.log("Error deleting credentials: ", error);
+            return false;
+        }
+    }
+
+    public close(): void {
+        if (this.db) {
+            this.db.closeSync();
         }
     }
 }

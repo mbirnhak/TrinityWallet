@@ -1,22 +1,48 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import bcrypt from 'bcryptjs'
-// var bcrypt = require('bcryptjs');
+import { storedValueKeys } from './enums';
 
-export async function generateSalt() {
-    const randomBytes = await Crypto.getRandomBytesAsync(16);
+const SQL_CIPHER_KEY_SIZE = 32
+
+export async function generateSalt(size: number = 16) {
+    const randomBytes = await Crypto.getRandomBytesAsync(size);
     return Buffer.from(randomBytes).toString('hex');
 }
 
+export async function getDbEncryptionKey() {
+    let dbEncryptionKey = await SecureStore.getItemAsync(storedValueKeys.DB_ENC_KEY);
+    if (!dbEncryptionKey) {
+        dbEncryptionKey = await generateSalt(SQL_CIPHER_KEY_SIZE);
+        await SecureStore.setItemAsync(storedValueKeys.DB_ENC_KEY, dbEncryptionKey);
+    }
+    return dbEncryptionKey;
+}
+
+export async function deleteKey() {
+    await SecureStore.deleteItemAsync(storedValueKeys.DB_ENC_KEY);
+}
+
+export async function hasDbEncryptionKey() {
+    const dbEncryptionKey = await SecureStore.getItemAsync(storedValueKeys.DB_ENC_KEY);
+    if (!dbEncryptionKey) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
 // Simplified function for hashing a value with SHA-256
-export async function shaHash(value: string, salt: string) {
+export async function shaHash(value: string, salt?: string): Promise<string | null> {
     try {
-        const valueSalt = `${value}:${salt}`;
+        const valueToHash = salt ? `${value}:${salt}` : value;
         const hash = await Crypto.digestStringAsync(
             Crypto.CryptoDigestAlgorithm.SHA256,
-            valueSalt
+            valueToHash
         );
-        const storedData = JSON.stringify({ hash: hash, salt: salt });
+        const storedData = salt
+            ? JSON.stringify({ hash: hash, salt: salt })
+            : hash;
         return storedData;
     } catch (error) {
         console.error('Error hashing your value: ', error);

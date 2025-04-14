@@ -97,6 +97,13 @@
           "backgroundColor": "#ffffff"
         }
       ],
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true,
+          "supportsPictureInPicture": true
+        }
+      ],
       "expo-font",
       [
         "expo-image-picker",
@@ -104,7 +111,21 @@
           "photosPermission": "The app needs access to your photos to set your profile picture.",
           "cameraPermission": "The app needs access to your camera to take profile pictures."
         }
-      ]
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      [
+        "expo-file-system",
+        {
+          "filePermission": "app-documents"
+        }
+      ],
+      "expo-sqlite",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true
@@ -117,7 +138,7 @@
         "projectId": "f1f0b7ab-f036-4e26-ad33-1a08ce1a26f2"
       }
     },
-    "owner": "trinity",
+    "owner": "mbirnhak",
     "runtimeVersion": {
       "policy": "appVersion"
     },
