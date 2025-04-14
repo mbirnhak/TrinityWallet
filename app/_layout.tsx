@@ -6,9 +6,9 @@ import { ActivityIndicator, AppState, AppStateStatus, View, StyleSheet } from 'r
 import { useEffect, Suspense, useState, type PropsWithChildren, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import * as SQLite from 'expo-sqlite';
-import { getDbEncryptionKey } from '@/services/Utils/crypto';
+import { getDbEncryptionKey, hasDbEncryptionKey, deleteKey } from '@/services/Utils/crypto';
 import { drizzle } from 'drizzle-orm/expo-sqlite';
-import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator'
+import { migrate, useMigrations } from 'drizzle-orm/expo-sqlite/migrator'
 import migrations from '@/drizzle/migrations'
 import { constants } from '@/services/Utils/enums';
 
@@ -121,9 +121,22 @@ function DatabaseSecurityProvider({ children }: PropsWithChildren) {
           console.log("Database unlocked");
         }
 
-        // If user is not logged in, the connection is automatically closed by SQLite Provider
+        // If user is not logged in
         else {
-          console.log("Database locked");
+          const dbHasEncryptionKey = await hasDbEncryptionKey();
+          // If the database has an encryption key set, then the database is locked (dealt with by SQLite Provider)
+          if (dbHasEncryptionKey === true) {
+            console.log("Database locked");
+          } else { // If the database does not have an encryption key set (meaning its the first time loading the app), then we need to set it
+            console.log("Database has no encryption key set, creating one...");
+            const dbEncryptionKey = await getDbEncryptionKey();
+            await db.execAsync(`PRAGMA key = "x'${dbEncryptionKey}'"`);
+            console.log("Database key has now been set");
+            console.log("Running migrations...");
+            // If the database is being created for the first time, we need to run the migrations
+            const drizzleDb = drizzle(db);
+            await migrate(drizzleDb, migrations);
+          }
         }
       } catch (error) {
         console.log(error);
@@ -136,35 +149,36 @@ function DatabaseSecurityProvider({ children }: PropsWithChildren) {
 }
 
 // Carries out the migrations necessary for drizzle setup
-function MigrationProvider({ children }: PropsWithChildren) {
-  const db = SQLite.useSQLiteContext();
-  try {
-    // If database has been setup, this will fail (because it will be enc).
-    db.execSync("SELECT * FROM sqlite_master;");
-    // If it did not fail, then the database was just created. Therefore, we must create the tables.
-    const drizzleDb = drizzle(db);
-    const { success, error } = useMigrations(drizzleDb, migrations);
-    console.log("Migration Success: ", success);
-    console.log("Migration Error: ", error);
-  } catch (error) {
-    console.log(error);
-  }
+// function MigrationProvider({ children }: PropsWithChildren) {
+//   const db = SQLite.useSQLiteContext();
+//   try {
+//     // If database has been setup, this will fail (because it will be enc).
+//     db.execSync("SELECT * FROM sqlite_master;");
+//     // If it did not fail, then the database was just created. Therefore, we must create the tables.
+//     const drizzleDb = drizzle(db);
+//     const { success, error } = useMigrations(drizzleDb, migrations);
+//     console.log("Migration Success: ", success);
+//     console.log("Migration Error: ", error);
+//   } catch (error) {
+//     console.log(error);
+//   }
 
-  return children;;
-}
+//   return children;;
+// }
 
-async function initDb(db: SQLite.SQLiteDatabase) {
-  try {
-    // If key is set already then this will fail
-    await db.execAsync("SELECT * FROM sqlite_master;");
-    // If it did not fail, then the database was just created. Therefore, we must set the key.
-    const dbEncryptionKey = await getDbEncryptionKey();
-    db.execSync(`PRAGMA key = "x'${dbEncryptionKey}'"`);
-    console.log("Database key has now been set");
-  } catch (error) {
-    console.log("Database already has key set");
-  }
-}
+// async function initDb(db: SQLite.SQLiteDatabase) {
+//   try {
+//     // If key is set already then this will fail
+//     await db.execAsync("SELECT * FROM sqlite_master;");
+//     // If it did not fail, then the database was just created. Therefore, we must set the key.
+//     const dbEncryptionKey = await getDbEncryptionKey();
+//     console.log("Setting database key...: ", dbEncryptionKey);
+//     db.execSync(`PRAGMA key = "x'${dbEncryptionKey}'"`);
+//     console.log("Database key has now been set");
+//   } catch (error) {
+//     console.log("Database already has key set");
+//   }
+// }
 
 export default function Root() {
 
@@ -175,15 +189,15 @@ export default function Root() {
           <SQLite.SQLiteProvider
             databaseName={constants.DBNAME}
             options={{ enableChangeListener: true }}
-            onInit={initDb}
+            // onInit={initDb}
             useSuspense
           >
-            <MigrationProvider>
-              <DatabaseSecurityProvider>
-                <AppStateListener />
-                <RootLayoutNav />
-              </DatabaseSecurityProvider>
-            </MigrationProvider>
+            {/* <MigrationProvider> */}
+            <DatabaseSecurityProvider>
+              <AppStateListener />
+              <RootLayoutNav />
+            </DatabaseSecurityProvider>
+            {/* </MigrationProvider> */}
           </SQLite.SQLiteProvider>
         </Suspense>
       </AuthProvider>

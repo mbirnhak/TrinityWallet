@@ -5,7 +5,7 @@ import * as schema from '@/db/schema';
 import * as SQLite from 'expo-sqlite';
 import { createSdJwt } from './Credentials/SdJwtVc';
 import { constants } from './Utils/enums';
-import { eq, isNotNull, or, sql } from 'drizzle-orm';
+import { eq, isNotNull, getTableColumns, sql } from 'drizzle-orm';
 
 export class CredentialStorage {
     private db;
@@ -91,30 +91,6 @@ export class CredentialStorage {
         }
     }
 
-    // async retrieveCredentialsByJsonPath(credential_paths: string[]) {
-    //     try {
-    //         // Build OR conditions for each path in the array
-    //         const orConditions = credential_paths.map(path =>
-    //             isNotNull(
-    //                 sql`json_extract(credential_claims, ${path})`
-    //             )
-    //         );
-    //         // Combine the conditions using OR
-    //         const whereCondition = or(...orConditions);
-
-    //         const matching_credentials = await this.drizzleDb.
-    //             select({
-    //                 credential_string: credentials.credential_string,
-    //                 credential_claims: credentials.credential_claims
-    //             }).
-    //             from(credentials).
-    //             where(whereCondition);
-    //         return matching_credentials;
-    //     } catch (error) {
-    //         console.log("Error retrieving credential: ", error);
-    //         return null;
-    //     }
-    // }
     async retrieveCredentialsByJsonPath(credential_paths: string[]) {
         try {
             // First, create a CASE expression to find the first matching path
@@ -122,14 +98,24 @@ export class CredentialStorage {
                 sql`WHEN json_extract(credential_claims, ${path}) IS NOT NULL THEN ${path}`
             ).reduce((acc, curr) => sql`${acc} ${curr}`, sql``);
 
+            // Create a similar CASE expression to get the matching value
+            const valueCaseExpression = credential_paths.map((path, index) =>
+                sql`WHEN json_extract(credential_claims, ${path}) IS NOT NULL THEN json_extract(credential_claims, ${path})`
+            ).reduce((acc, curr) => sql`${acc} ${curr}`, sql``);
+
             // Select the credential string, claims, and the first matching path
             const matching_credentials = await this.drizzleDb
                 .select({
-                    credential_string: credentials.credential_string,
-                    credential_claims: credentials.credential_claims,
+                    credential_id: credentials.id,
                     matching_path: sql<string>`
                         CASE
                             ${pathCaseExpression}
+                            ELSE NULL
+                        END
+                    `,
+                    matching_value: sql<string>`
+                        CASE
+                            ${valueCaseExpression}
                             ELSE NULL
                         END
                     `
@@ -149,6 +135,76 @@ export class CredentialStorage {
         } catch (error) {
             console.log("Error retrieving credential: ", error);
             return null;
+        }
+    }
+
+    async retrieveCredentialByFormat(credential_format: string) {
+        try {
+            const retrievedCredentials = await this.drizzleDb
+                .select({
+                    credential_id: credentials.id
+                })
+                .from(credentials)
+                .where(eq(credentials.credential_format, credential_format));
+            return retrievedCredentials;
+        } catch (error) {
+            console.log("Error retrieving credentials: ", error);
+            return null;
+        }
+    }
+
+    async retrieveCredentialById(credential_id: number, columns: (keyof typeof credentials)[] = []) {
+        try {
+            // Set up the selection object conditionally
+            const selection = columns.length > 0
+                ? columns.reduce((acc, column) => {
+                    acc[column] = credentials[column];
+                    return acc;
+                }, {} as Record<string, any>)
+                : {};  // When undefined, select() will get all columns
+
+            // Single query with conditional selection
+            const retrievedCredential = await this.drizzleDb
+                .select(selection)
+                .from(credentials)
+                .where(eq(credentials.id, credential_id));
+
+            return retrievedCredential;
+        } catch (error) {
+            console.log("Error retrieving credentials: ", error);
+            return null;
+        }
+    }
+
+    async deleteCredentialById(credential_id: number) {
+        try {
+            await this.drizzleDb.delete(credentials).where(eq(credentials.id, credential_id));
+            return true;
+        } catch (error) {
+            console.log("Error deleting credential: ", error);
+            return false;
+        }
+    }
+
+    async deleteCredentialsById(credential_ids: number[]) {
+        try {
+            await this.drizzleDb.delete(credentials).where(
+                sql`${credentials.id} IN (${sql.join(credential_ids, ', ')})`
+            );
+            return true;
+        } catch (error) {
+            console.log("Error deleting credentials: ", error);
+            return false;
+        }
+    }
+
+    async deleteAllCredentials() {
+        try {
+            await this.drizzleDb.delete(credentials);
+            return true;
+        } catch (error) {
+            console.log("Error deleting credentials: ", error);
+            return false;
         }
     }
 

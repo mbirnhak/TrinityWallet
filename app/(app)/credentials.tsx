@@ -236,10 +236,10 @@ export default function Credentials() {
       
       <View style={[styles.container, { backgroundColor: theme.dark }]}>
         <CommonHeader title="Digital Credentials" />
-        
-        <Animatable.View 
-          animation="fadeIn" 
-          duration={1000} 
+
+        <Animatable.View
+          animation="fadeIn"
+          duration={1000}
           style={styles.contentContainer}
         >
           {loading ? (

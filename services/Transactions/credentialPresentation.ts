@@ -7,6 +7,8 @@ import { CredentialStorage } from '../credentialStorage';
 import { storedValueKeys } from '../Utils/enums';
 import { getDbEncryptionKey } from '../Utils/crypto';
 import { Validator } from 'jsonschema';
+import * as jose from 'jose'
+import { JWK, CryptoKey } from 'react-native-quick-crypto/lib/typescript/src/keys';
 
 const TRIN_LIB_SERVER_ID = 'lib-verification-service-123';
 
@@ -22,6 +24,11 @@ type PresentationSubmission = {
     descriptor_map: DescriptorMap[];
 }
 
+type credentialMatches = {
+    credential_ids: number[];
+    requested_claims: string[];
+}
+
 export async function retrieve_authorization_request(request_uri: string) {
     console.log('[Auth Request] Retrieving authorization request');
     const response = await fetch(request_uri);
@@ -34,7 +41,8 @@ export async function retrieve_authorization_request(request_uri: string) {
     }
     const encoded_jwt = await response.text();
     const decoded_jwt = await decode_jwt(encoded_jwt);
-    await send_presentation(decoded_jwt);
+    const status = await send_presentation(decoded_jwt);
+    return status;
 }
 
 async function trin_send_presentation(presentation_definition: JSON) {
@@ -43,15 +51,24 @@ async function trin_send_presentation(presentation_definition: JSON) {
 
 async function send_presentation(decoded_jwt: Record<string, unknown>) {
     const response_uri = decoded_jwt.response_uri as string;
-    const client_id = decoded_jwt.client_id;
-    const state = decoded_jwt.state;
-    const presentation_definition = decoded_jwt.presentation_definition as Record<string, unknown>;
+    const client_id = decoded_jwt.client_id as string;
+    const state = decoded_jwt.state as string;
+    let presentation_definition = decoded_jwt.presentation_definition as Record<string, unknown>;
+    if (presentation_definition === undefined) {
+        const presentation_response = await fetch(decoded_jwt.presentation_definition_uri as string);
+        presentation_definition = await presentation_response.json();
+        if (!presentation_response.ok || presentation_definition === undefined) {
+            console.error("Failed to fetch presentation definition: ", presentation_response.status);
+            throw new Error(`Failed to fetch presentation definition: ${presentation_response.status}`);
+            return false;
+        }
+        console.log("Presentation definition: ", presentation_definition);
+    }
     const presentation_definition_id = presentation_definition.id as string;
-    const input_descriptors = presentation_definition.input_descriptors as Record<string, unknown>[]
-
-    const response_mode = decoded_jwt.response_mode;
-    const client_metadata = decoded_jwt.client_metadata;
-    const nonce = decoded_jwt.nonce;
+    const input_descriptors = presentation_definition.input_descriptors as Record<string, unknown>[];
+    const response_mode = decoded_jwt.response_mode as string;
+    const client_metadata = decoded_jwt.client_metadata as Record<string, unknown>;
+    const nonce = decoded_jwt.nonce as string;
 
     /**
      * Not required to be included in presentation definition.
@@ -74,23 +91,21 @@ async function send_presentation(decoded_jwt: Record<string, unknown>) {
         "descriptor_map": []
     }
 
+    let vp_token: string | string[] = [];
+
     type info_requested = {
         name: string;
         purpose: string;
     };
     // Information to be shown to user
     const all_info_requested: info_requested[] = [];
+    let descriptor_map_path: number = 0;
     /**
      * Each descriptor represents a different credential requested.
-     * Each descriptor contains "constratins" and constraints contains fields[].
-     * Each value in fields[] represents an attribute requested from that credential type.
-     * Each attribute is described by a path[] and filter. Filter.constant defines the ID of the cred requested.
-     * path[0] represents the location of that attribute (and the attriubte name) on the credential.
-     * 
-     * Search credentials based on JSONPath (to see if any match), then use filter property if its there (its optional) to filter results.
-     * 
+     * For each descriptor, find the matching credentials in the wallet.
+     * The descriptor id is used to identify the credential in the presentation submission.
      */
-    for (const descriptor of input_descriptors as Record<string, any>[]) {
+    for (const descriptor of input_descriptors) {
         console.log("Descriptor: ", descriptor);
         const descriptor_name = descriptor.name as string;
         const descriptor_purpose = descriptor.purpose as string;
@@ -98,43 +113,76 @@ async function send_presentation(decoded_jwt: Record<string, unknown>) {
             name: descriptor_name,
             purpose: descriptor_purpose
         });
-        const matches = await findMatchingCredentials(descriptor);
+        let matches = await findMatchingCredentials(descriptor);
+
+        /**
+         * findMatchingCredentials() only returns null if no fields are found in the descriptor.
+         * If no fields are found we can return credentials based on the format in the presentation definition (or descriptor),
+         * but we DO NOT provide any claims to the verifier. This is because they are not specified in the descriptor, and may
+         * just want to see possesion of a credential of a certain type.
+         *  */
 
         if (matches === null) {
             console.log("No fields found in descriptor: ", descriptor);
-            let formats = Object.keys(descriptor?.format);
-            if (!formats) {
+            let formats = descriptor?.format && typeof descriptor.format === 'object' ? Object.keys(descriptor.format) : [];
+            if (formats.length === 0) {
                 formats = presentation_definition?.format as string[];
             }
-
             // TODO: Search for credentials based on format in presentation definition.
+            // Initialize db connection
+            const dbEncryptionKey = await getDbEncryptionKey();
+            const storage = new CredentialStorage(dbEncryptionKey);
+            try {
+                const match_by_format = await storage.retrieveCredentialByFormat(formats[0]);
+                matches = {
+                    credential_ids: match_by_format === null ? [] : match_by_format.map((c) => c.credential_id),
+                    requested_claims: []
+                }
+            } finally {
+                // Close the database connection
+                storage.close();
+            }
         }
-        else if (matches.credential_string.length === 0) {
+
+        if (matches.credential_ids.length === 0) {
             console.log("No matching credentials found for descriptor: ", descriptor);
-            return;
+            continue;
         }
         const input_descriptor_id = descriptor.id;
-        const descriptor_map_format = descriptor.format as string;
-        const descriptor_map_path = descriptor.path as string;
         presentation_submission.descriptor_map.push({
             "id": input_descriptor_id as string,
-            "format": descriptor_map_format,
-            "path": descriptor_map_path
+            "format": "vc+sd-jwt", // Temporary, we will use the format stored with the credential
+            "path": `$[${descriptor_map_path}]` // Set path to the index of the descriptor
         })
-        // const sd_jwt_presentation = generatePresentation();
+        descriptor_map_path++;
+        // For now, we will just use the first credential string that matched. Later we can have the user select which credential to use.
+        vp_token.push(await generateVpToken(matches.credential_ids[0], matches.requested_claims, client_id, nonce));
     }
 
-    // const params = new URLSearchParams({
-    //     response_type: 'code'
-    // });
+    if (vp_token.length === 0) {
+        console.log("No matching credentials found");
+        return;
+    } else if (vp_token.length === 1) {
+        vp_token = vp_token[0];
+        presentation_submission.descriptor_map[0].path = "$"; // Set path to "$" if only one descriptor
+    }
 
-    // const response = fetch(response_uri, {
-    //     method: 'POST',
-    //     headers: {
-    //         'Content-Type': 'application/x-www-form-urlencoded'
-    //     },
-    //     body: params.toString()
-    // })
+
+    const presentation_body = await generatePresentationBody(response_mode, state, presentation_submission, vp_token, client_metadata, nonce);
+    if (presentation_body === "") {
+        console.log("No presentation body generated");
+        return;
+    }
+
+    console.log("Presentation body: ", presentation_body);
+    const response = fetch(response_uri, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: presentation_body
+    })
+    console.log("Response: ", response);
 }
 
 async function decode_jwt(encoded_jwt: string) {
@@ -153,69 +201,10 @@ async function decode_jwt(encoded_jwt: string) {
     return payload;
 }
 
-async function createKbJwt(aud: string, sdHash: string, nonce: string): Promise<string> {
-    try {
-        console.log('[KB-JWT] Creating Key Binding JWT');
-
-        // Get stored key pair or generate a new one if needed
-        const privateKeyJson = await SecureStore.getItemAsync("priv-key");
-        const publicKeyJson = await SecureStore.getItemAsync("pub-key");
-
-        if (!privateKeyJson || !publicKeyJson) {
-            throw new Error("Keys not found in secure storage");
-        }
-
-        const privateKey = JSON.parse(privateKeyJson);
-        const publicKey = JSON.parse(publicKeyJson);
-
-        // Create JWT header
-        const header = {
-            "typ": "kb+jwt",
-            "alg": "ES256"
-        };
-
-        // Create payload with required claims
-        const payload = {
-            "iat": Math.floor(Date.now() / 1000), // The time at which the KB JWT was issued
-            "aud": aud, // The intended receiver of the KB JWT
-            "nonce": nonce, // Ensures the freshness of the signature
-            "sd_hash": sdHash // The base64url-encoded hash value over the SD-JWT
-        };
-
-        // Create the signing input (header.payload)
-        const encodedHeader = base64url(JSON.stringify(header));
-        const encodedPayload = base64url(JSON.stringify(payload));
-        const signingInput = `${encodedHeader}.${encodedPayload}`;
-
-        // Create an SdJwt instance to use for signing
-        const sdJwt = await createSdJwt(privateKey, publicKey);
-
-        // Sign the input
-        const signature = await sdJwt.signJwt(signingInput);
-        if (!signature) {
-            throw new Error("JWT signature could not be generated");
-        }
-
-        // Encode the signature and create the full JWT
-        const encodedSignature = base64url(signature);
-        const jwt = `${signingInput}.${encodedSignature}`;
-
-        console.log('[KB-JWT] Generated JWT:', jwt.substring(0, 50) + '...');
-        return jwt;
-    } catch (error) {
-        console.error('[KB-JWT] Error creating Key Binding JWT:', error);
-        throw error;
-    }
-}
-
-type credentialMatches = {
-    credential_string: string[];
-    requested_claims: string[];
-}
 /**
  * 
  * @param descriptor input descriptor object from input descriptors array in presentation definition.
- * @returns Array of matching credentials if any are found.
+ * @returns Array of matching credentials and requested claims.
  *          Null if the fields array is empty or not present (DOES NOT MEAN NO MATCHING CREDENTIALS)
  *          Empty array if no matching credentials found or an error occurs.
  */
@@ -225,8 +214,8 @@ async function findMatchingCredentials(descriptor: Record<string, any>): Promise
     const storage = new CredentialStorage(dbEncryptionKey);
     try {
         const v = new Validator();
-        const matches_and_req_claims: credentialMatches = {
-            credential_string: [],
+        const matches_and_requested_claims: credentialMatches = {
+            credential_ids: [],
             requested_claims: []
         };
         const fields = descriptor?.constraints?.fields;
@@ -235,13 +224,16 @@ async function findMatchingCredentials(descriptor: Record<string, any>): Promise
             const formats = descriptor?.format;
             return null;
         }
+
+        let validCredentialIds: number[] | null = null;
+        let allRequestedClaims: string[] = [];
         for (const field of fields) {
             // Returns array of credentials matching one of the paths in the field.
             const credentials = await storage.retrieveCredentialsByJsonPath(field.path as string[]);
-            if (!credentials) {
+            if (!credentials || credentials.length === 0) {
                 console.log("No credentials found for path: ", field.path);
                 return {
-                    credential_string: [],
+                    credential_ids: [],
                     requested_claims: []
                 };
             }
@@ -251,72 +243,184 @@ async function findMatchingCredentials(descriptor: Record<string, any>): Promise
             //      2. Find the first path that matched (evaluated from 0 index)
             //      3. Filter credentials based on the first path
             const matchingPaths = [...new Set(credentials.map(c => c.matching_path))];
-            const firstMatchingPath = field.path.find((path: string) => matchingPaths.includes(path));
-            const filteredByLowestIndex = credentials.filter((credential) => 
+            const firstMatchingPath: string = field.path.find((path: string) => matchingPaths.includes(path));
+            const filteredByLowestIndex = credentials.filter((credential) =>
                 credential.matching_path === firstMatchingPath
             );
 
+            let currentFieldCredentials;
             const filter = field?.filter;
             if (filter) {
-                const filteredCredentials = credentials.filter((credential) => {
-                    const result = v.validate(credential.credential_claims, filter);
+                currentFieldCredentials = filteredByLowestIndex.filter((credential) => {
+                    const result = v.validate(credential.matching_value, filter);
                     return result.valid;
                 });
-                if (filteredCredentials.length === 0) {
+                if (currentFieldCredentials.length === 0) {
                     console.log("No credentials found for filter: ", filter);
                     return {
-                        credential_string: [],
+                        credential_ids: [],
                         requested_claims: []
                     };
-                } else {
-                    // Use the filtered credentials
-                    matches_and_req_claims.credential_string.push(...filteredCredentials.map(c => c.credential_string));
-                    matches_and_req_claims.requested_claims.push(firstMatchingPath);
                 }
             } else {
                 // No filter, so just use the filtered credentials
-                matches_and_req_claims.credential_string.push(...filteredByLowestIndex.map(c => c.credential_string));
-                matches_and_req_claims.requested_claims.push(firstMatchingPath);
+                currentFieldCredentials = filteredByLowestIndex;
             }
+
+            // Get credential strings for current field object
+            const currentCredentialIds = new Set(currentFieldCredentials.map((c) => c.credential_id));
+
+            // For the first field processed, initialize the validCredentialStrings
+            if (validCredentialIds === null) {
+                validCredentialIds = Array.from(currentCredentialIds);
+            } else {
+                // For subsequent fields, only keep the creedential strings that match every field
+                validCredentialIds = validCredentialIds.filter((cred: number) => currentCredentialIds.has(cred));
+                if (validCredentialIds.length === 0) {
+                    console.log("No credentials match all fields, while evaluating: ", field);
+                    return {
+                        credential_ids: [],
+                        requested_claims: []
+                    };
+                }
+            }
+            // Add the claims to the allRequestedClaims array
+            allRequestedClaims.push(firstMatchingPath);
         }
-        return matches_and_req_claims;
+
+        console.log("Valid Credential Ids: ", validCredentialIds);
+        console.log("All Requested Claims: ", allRequestedClaims);
+        return {
+            credential_ids: validCredentialIds as number[],
+            requested_claims: allRequestedClaims
+        };
     } catch (error) {
         console.error("Error finding matching credentials: ", error);
         return {
-            credential_string: [],
+            credential_ids: [],
             requested_claims: []
         };
     } finally {
-        // Close the database connection if needed
+        // Close the database connection
         storage.close();
     }
 }
 
-async function generateDescriptorMap() {
-
+type kb_payload = {
+    iat: number;
+    aud: string;
+    nonce: string;
+}
+async function generateVpToken(credential_id: number, claims: string | string[], client_id: string, nonce: string) {
+    const kb_payload: kb_payload = {
+        "iat": Math.floor(Date.now() / 1000), // The time at which the KB JWT was issued
+        "aud": client_id, // The intended receiver of the KB JWT
+        "nonce": nonce, // Ensures the freshness of the signature
+    };
+    const presentation = await generatePresentation(credential_id, claims, kb_payload);
+    if (presentation === "") {
+        console.log("No presentation generated");
+        return "";
+    }
+    return presentation;
 }
 
-async function generatePresentation(credential_type: string | string[], claims: string | string[]) {
-    // const credential = await CredentialStorage.retrieveCredential('jwt_vc');
-    // if (!credential) {
-    //     return null;
-    // }
-    // console.log("Credential: ", credential)
-    // const privateKey_string = await SecureStore.getItemAsync("priv-key");
-    // const publicKey_string = await SecureStore.getItemAsync("pub-key");
-    // if (!privateKey_string || !publicKey_string) {
-    //     return null;
-    // }
-    // const privateKey = JSON.parse(privateKey_string);
-    // console.log("Priv Key: ", privateKey)
-    // const publicKey = JSON.parse(publicKey_string);
-    // const sdjwt = await createSdJwt(privateKey, publicKey);
+async function generatePresentation(credential_id: number, claims: string | string[], kb_payload: kb_payload) {
+    // Initialize db connection
+    const dbEncryptionKey = await getDbEncryptionKey();
+    const storage = new CredentialStorage(dbEncryptionKey);
+    try {
+        const credential = await storage.retrieveCredentialById(credential_id, ["credential_string", "public_key", "private_key"]);
+        if (!credential) {
+            return "";
+        } else {
+            const credential_string = credential[0].credential_string;
+            const public_key = credential[0].public_key;
+            const private_key = credential[0].private_key;
 
-    // const disclosureFrame = {
-    //     "given_name": true,
-    //     "family_name": true
-    // };
+            // Create an SdJwt instance to use for signing
+            const sdJwt = await createSdJwt(private_key, public_key, true);
+            let disclosureFrame;
+            if (typeof claims === "string") {
+                disclosureFrame = {
+                    [claims]: true
+                }
+            } else {
+                disclosureFrame = claims.reduce((acc: Record<string, boolean>, claim: string) => {
+                    acc[claim] = true;
+                    return acc;
+                }, {} as Record<string, boolean>);
+            }
 
-    // const sd_jwt_presentation = await sdjwt.presentCredential(credential, disclosureFrame);
-    // console.log("Presentation: ", sd_jwt_presentation);
+            const sd_jwt_kb_presentation = await sdJwt.presentCredential(credential_string, disclosureFrame, {
+                kb: {
+                    payload: kb_payload,
+                }
+            });
+            console.log("Presentation: ", sd_jwt_kb_presentation);
+            return sd_jwt_kb_presentation;
+        }
+    } catch (error) {
+        console.error("Error retrieving credential: ", error);
+        return "";
+    } finally {
+        // Close the database connection
+        storage.close();
+    }
+}
+
+async function generatePresentationBody(response_mode: string, state: string, presentation_submission: PresentationSubmission, vp_token: string | string[], client_metadata: Record<string, unknown>, nonce: string) {
+    const presentation_data = new URLSearchParams({
+        state: state,
+        vp_token: Array.isArray(vp_token) ? JSON.stringify(vp_token) : vp_token,
+        presentation_submission: JSON.stringify(presentation_submission)
+    })
+    console.log("Presentation data: ", presentation_data.toString());
+    console.log("Response mode: ", response_mode);
+    if (response_mode === "direct_post") {
+        return presentation_data.toString();
+    } else if (response_mode === "direct_post.jwt") {
+        try {
+            const nonce_encoded = base64url.encode(nonce);
+            const alg = client_metadata.authorization_encrypted_response_alg as string;
+            const enc = client_metadata.authorization_encrypted_response_enc as string;
+            let jwks = client_metadata.jwks as Record<"keys", any>;
+            if (jwks === undefined) {
+                const jwks_uri = client_metadata.jwks_uri as string;
+                const jwks_response = await fetch(jwks_uri);
+                jwks = await jwks_response.json();
+            }
+            const key = jwks.keys[0] as JWK;
+            console.log("Before import key");
+            const importedKey = await jose.importJWK(key, alg) as CryptoKey;
+            console.log("After import key");
+            // Object.defineProperty(importedKey, Symbol.toStringTag, {
+            //     value: 'CryptoKey',
+            //     configurable: false,  // Prevent further modification
+            //     writable: false,      // Make it read-only
+            //     enumerable: false
+            // });
+
+            console.log("import key: ", importedKey)
+            console.log("***KEY***: ", key);
+            const presentationDataUint8Array = new TextEncoder().encode(presentation_data.toString());
+            // Create a JWE with the presentation data as the payload
+            const jwe = await new jose.CompactEncrypt(presentationDataUint8Array)
+                .setProtectedHeader({ alg: alg, enc: enc, apv: nonce_encoded })
+                .encrypt(importedKey)
+
+            console.log("JWE: ", jwe);
+            const jwe_encoded_presentation = new URLSearchParams({
+                state: state,
+                response: jwe
+            })
+            return jwe_encoded_presentation.toString();
+        } catch (error) {
+            console.error("Error generating encrypted presentation: ", error);
+            return "";
+        }
+    } else {
+        console.log("Response mode not supported: ", response_mode);
+        return "";
+    }
 }
