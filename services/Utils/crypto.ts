@@ -19,6 +19,19 @@ export async function getDbEncryptionKey() {
     return dbEncryptionKey;
 }
 
+export async function deleteKey() {
+    await SecureStore.deleteItemAsync(storedValueKeys.DB_ENC_KEY);
+}
+
+export async function hasDbEncryptionKey() {
+    const dbEncryptionKey = await SecureStore.getItemAsync(storedValueKeys.DB_ENC_KEY);
+    if (!dbEncryptionKey) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
 // Simplified function for hashing a value with SHA-256
 export async function shaHash(value: string, salt?: string): Promise<string | null> {
     try {

@@ -1,4 +1,4 @@
-import { drizzle } from 'drizzle-orm/expo-sqlite';
+import { drizzle, ExpoSQLiteDatabase } from 'drizzle-orm/expo-sqlite';
 import * as SecureStore from 'expo-secure-store';
 import { credentials } from '@/db/schema';
 import * as schema from '@/db/schema';
@@ -8,13 +8,17 @@ import { constants } from './Utils/enums';
 import { eq, isNotNull, or, sql } from 'drizzle-orm';
 import LogService from './LogService';
 
+type DrizzleDbType = ExpoSQLiteDatabase<typeof schema> & {
+    $client: SQLite.SQLiteDatabase;
+};
+
 // A helper to create reusable safe database operations
-const withDB = async <T>(dbEncryptionKey: string, operation: (db: any) => Promise<T>): Promise<T> => {
+const withDB = async <T>(dbEncryptionKey: string, operation: (db: DrizzleDbType) => Promise<T>): Promise<T> => {
     // Open a new connection for each operation
     const db = SQLite.openDatabaseSync(constants.DBNAME);
     db.execSync(`PRAGMA key = "x'${dbEncryptionKey}'"`);
     const drizzleDb = drizzle(db, { schema });
-    
+
     try {
         // Execute the operation
         const result = await operation(drizzleDb);
@@ -32,10 +36,15 @@ const withDB = async <T>(dbEncryptionKey: string, operation: (db: any) => Promis
 export class CredentialStorage {
     private dbEncryptionKey: string;
     private logService: LogService;
+    private db;
+    private drizzleDb;
 
     constructor(dbEncryptionKey: string) {
         this.dbEncryptionKey = dbEncryptionKey;
         this.logService = LogService.getInstance();
+        this.db = SQLite.openDatabaseSync(constants.DBNAME);
+        this.db.execSync(`PRAGMA key = "x'${dbEncryptionKey}'"`);
+        this.drizzleDb = drizzle(this.db, { schema });
     }
 
     async storeCredential(credential_string: string) {
@@ -194,27 +203,37 @@ export class CredentialStorage {
                     sql`WHEN json_extract(credential_claims, ${path}) IS NOT NULL THEN ${path}`
                 ).reduce((acc, curr) => sql`${acc} ${curr}`, sql``);
 
+                // Create a similar CASE expression to get the matching value
+                const valueCaseExpression = credential_paths.map((path, index) =>
+                    sql`WHEN json_extract(credential_claims, ${path}) IS NOT NULL THEN json_extract(credential_claims, ${path})`
+                ).reduce((acc, curr) => sql`${acc} ${curr}`, sql``);
+
                 // Select the credential string, claims, and the first matching path
                 return await db
                     .select({
-                        credential_string: credentials.credential_string,
-                        credential_claims: credentials.credential_claims,
+                        credential_id: credentials.id,
                         matching_path: sql<string>`
-                            CASE
-                                ${pathCaseExpression}
-                                ELSE NULL
-                            END
-                        `
+                        CASE
+                            ${pathCaseExpression}
+                            ELSE NULL
+                        END
+                    `,
+                        matching_value: sql<string>`
+                        CASE
+                            ${valueCaseExpression}
+                            ELSE NULL
+                        END
+                    `
                     })
                     .from(credentials)
                     // Only return rows where at least one path matches
                     .where(
                         isNotNull(sql`
-                            CASE
-                                ${pathCaseExpression}
-                                ELSE NULL
-                            END
-                        `)
+                        CASE
+                            ${pathCaseExpression}
+                            ELSE NULL
+                        END
+                    `)
                     );
             });
         } catch (error) {
@@ -232,15 +251,85 @@ export class CredentialStorage {
         }
     }
 
+    async retrieveCredentialByFormat(credential_format: string) {
+        try {
+            const retrievedCredentials = await this.drizzleDb
+                .select({
+                    credential_id: credentials.id
+                })
+                .from(credentials)
+                .where(eq(credentials.credential_format, credential_format));
+            return retrievedCredentials;
+        } catch (error) {
+            console.log("Error retrieving credentials: ", error);
+            return null;
+        }
+    }
+
+    async retrieveCredentialById(credential_id: number, columns: (keyof typeof credentials)[] = []) {
+        try {
+            // Set up the selection object conditionally
+            const selection = columns.length > 0
+                ? columns.reduce((acc, column) => {
+                    acc[column] = credentials[column];
+                    return acc;
+                }, {} as Record<string, any>)
+                : {};  // When undefined, select() will get all columns
+
+            // Single query with conditional selection
+            const retrievedCredential = await this.drizzleDb
+                .select(selection)
+                .from(credentials)
+                .where(eq(credentials.id, credential_id));
+
+            return retrievedCredential;
+        } catch (error) {
+            console.log("Error retrieving credentials: ", error);
+            return null;
+        }
+    }
+
+    async deleteAllCredentials() {
+        try {
+            await this.drizzleDb.delete(credentials);
+            return true;
+        } catch (error) {
+            console.log("Error deleting credentials: ", error);
+            return false;
+        }
+    }
+
+    async deleteCredentialByIdSimple(credential_id: number) {
+        try {
+            await this.drizzleDb.delete(credentials).where(eq(credentials.id, credential_id));
+            return true;
+        } catch (error) {
+            console.log("Error deleting credential: ", error);
+            return false;
+        }
+    }
+
+    async deleteCredentialsById(credential_ids: number[]) {
+        try {
+            await this.drizzleDb.delete(credentials).where(
+                sql`${credentials.id} IN (${sql.join(credential_ids, ', ')})`
+            );
+            return true;
+        } catch (error) {
+            console.log("Error deleting credentials: ", error);
+            return false;
+        }
+    }
+
     async deleteCredentialByType(credentialType: string) {
         try {
             // First retrieve the credential to get info for logging
             const allCredentials = await this.retrieveCredentials();
-            
+
             // Find the credential with the matching type from our mapping
             let credentialToDelete = null;
             let vctPattern = null;
-            
+
             // Map the short type back to VCT pattern for matching
             // Updated patterns to match what's actually in the credentials
             const typeToVctMap = {
@@ -254,26 +343,26 @@ export class CredentialStorage {
                 'pda1': 'pda1',
                 'por': 'por'
             };
-            
+
             // Get the VCT pattern for the credential type
-            vctPattern = typeToVctMap[credentialType];
-            
+            vctPattern = typeToVctMap[credentialType as keyof typeof typeToVctMap];
+
             if (!vctPattern) {
                 throw new Error(`Unknown credential type: ${credentialType}`);
             }
-            
+
             console.log(`Looking for credential with pattern: ${vctPattern}`);
-            
+
             // Find the matching credential
             for (const credential of allCredentials || []) {
                 // Parse credential claims if they're a string
-                const claims = typeof credential.credential_claims === 'string' 
-                    ? JSON.parse(credential.credential_claims) 
+                const claims = typeof credential.credential_claims === 'string'
+                    ? JSON.parse(credential.credential_claims)
                     : credential.credential_claims;
-                
+
                 // Debug log to see what's in the credential
                 console.log(`Checking credential with VCT: ${claims.vct || 'none'}`);
-                
+
                 // Check if VCT matches our pattern - try a more flexible match
                 const vct = claims.vct || '';
                 if (vct && vct.toLowerCase().includes(vctPattern.toLowerCase())) {
@@ -281,55 +370,55 @@ export class CredentialStorage {
                     credentialToDelete = credential;
                     break;
                 }
-                
+
                 // Check for exact VCT match with URN format (added for age verification)
-                if (credentialType === 'age_verification' && 
+                if (credentialType === 'age_verification' &&
                     vct && vct.includes('urn:eu.europa.ec.eudi:pseudonym_age_over_18')) {
                     console.log(`Found age verification credential with ID: ${credential.id}`);
                     credentialToDelete = credential;
                     break;
                 }
-                
+
                 // Check VC type array as a fallback
                 if (!credentialToDelete && claims.vc) {
-                    const typeArray = Array.isArray(claims.vc._type) ? claims.vc._type : 
-                                     (typeof claims.vc._type === 'string' ? [claims.vc._type] : []);
-                    
-                    if (typeArray.some((t) => typeof t === 'string' && 
+                    const typeArray = Array.isArray(claims.vc._type) ? claims.vc._type :
+                        (typeof claims.vc._type === 'string' ? [claims.vc._type] : []);
+
+                    if (typeArray.some((t: string) => typeof t === 'string' &&
                         t.toLowerCase().includes(vctPattern.toLowerCase()))) {
                         console.log(`Found credential via VC type with ID: ${credential.id}`);
                         credentialToDelete = credential;
                         break;
                     }
                 }
-                
+
                 // Additional check for 'over18' claim for age verification
-                if (credentialType === 'age_verification' && 
-                    (claims.over18 === true || claims.age_over_18 === true || 
-                    claims['18'] === true)) {
+                if (credentialType === 'age_verification' &&
+                    (claims.over18 === true || claims.age_over_18 === true ||
+                        claims['18'] === true)) {
                     console.log(`Found age verification credential by claim with ID: ${credential.id}`);
                     credentialToDelete = credential;
                     break;
                 }
             }
-            
+
             if (!credentialToDelete) {
                 throw new Error(`No credential found of type: ${credentialType}`);
             }
-            
+
             // Get credential ID and issuer for logging
             const credentialId = credentialToDelete.id;
-            const claims = typeof credentialToDelete.credential_claims === 'string' 
-                ? JSON.parse(credentialToDelete.credential_claims) 
+            const claims = typeof credentialToDelete.credential_claims === 'string'
+                ? JSON.parse(credentialToDelete.credential_claims)
                 : credentialToDelete.credential_claims;
             const issuer = claims.iss || 'Unknown Issuer';
-            
+
             // Delete the credential from the database
             await withDB(this.dbEncryptionKey, async (db) => {
                 return await db.delete(credentials)
                     .where(eq(credentials.id, credentialId));
             });
-            
+
             // Log successful deletion
             try {
                 await this.logService.createLog({
@@ -341,11 +430,11 @@ export class CredentialStorage {
             } catch (error) {
                 console.error("Error logging credential deletion:", error);
             }
-            
+
             return true;
         } catch (error) {
             console.error("Error deleting credential:", error);
-            
+
             // Log the error
             try {
                 await this.logService.createLog({
@@ -356,36 +445,36 @@ export class CredentialStorage {
             } catch (logError) {
                 console.error("Error logging credential deletion failure:", logError);
             }
-            
+
             return false;
         }
     }
 
-    async deleteCredentialById(credentialId: number | string) {
+    async deleteCredentialById(credentialId: number) {
         try {
             // First retrieve the credential to get info for logging
             const allCredentials = await this.retrieveCredentials();
-            
+
             // Find the credential with the matching ID
             const credentialToDelete = allCredentials?.find(cred => cred.id === credentialId);
-            
+
             if (!credentialToDelete) {
                 throw new Error(`No credential found with ID: ${credentialId}`);
             }
-            
+
             // Get credential type and issuer for logging
-            const claims = typeof credentialToDelete.credential_claims === 'string' 
-                ? JSON.parse(credentialToDelete.credential_claims) 
+            const claims = typeof credentialToDelete.credential_claims === 'string'
+                ? JSON.parse(credentialToDelete.credential_claims)
                 : credentialToDelete.credential_claims;
-            
+
             const issuer = claims.iss || 'Unknown Issuer';
-            
+
             // Delete the credential from the database
             await withDB(this.dbEncryptionKey, async (db) => {
                 return await db.delete(credentials)
                     .where(eq(credentials.id, credentialId));
             });
-            
+
             // Log successful deletion
             try {
                 await this.logService.createLog({
@@ -397,11 +486,11 @@ export class CredentialStorage {
             } catch (error) {
                 console.error("Error logging credential deletion:", error);
             }
-            
+
             return true;
         } catch (error) {
             console.error("Error deleting credential:", error);
-            
+
             // Log the error
             try {
                 await this.logService.createLog({
@@ -412,13 +501,14 @@ export class CredentialStorage {
             } catch (logError) {
                 console.error("Error logging credential deletion failure:", logError);
             }
-            
+
             return false;
         }
     }
 
     public close(): void {
-        // No need to close anything since we're using withDB pattern
-        // This is just a placeholder for backward compatibility
+        if (this.db) {
+            this.db.closeSync();
+        }
     }
 }
