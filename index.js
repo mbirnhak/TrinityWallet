@@ -17,9 +17,9 @@ function setupCrypto() {
         const QuickCryptoModule = require('react-native-quick-crypto');
         const QuickCrypto = QuickCryptoModule.default;
         const Crypto = require('expo-crypto');
-        const p256_class = require('@noble/curves/p256');
-        const p256 = p256_class.p256;
-        
+        const p256Module = require('@noble/curves/p256');
+        const p256 = p256Module.p256;
+
         subtleImplementation = QuickCrypto.subtle;
         // Then override only the specific methods needed
 
@@ -31,28 +31,31 @@ function setupCrypto() {
          * @throws {Error} If there is an error in the derivation process
          * @description Custom implementation of deriveBits, because QuickCrypto does not support it for ECDH yet.
         */
-        subtleImplementation.deriveBits = async (algorithm, privateKey, length = 256) => {
+        subtleImplementation.deriveBits = async (algorithm, privateKey, length) => {
             try {
-                console.log('Algorithm', algorithm);
-                console.log('PrivateKey', privateKey);
                 const exportedPublicKey = await QuickCrypto.subtle.exportKey('jwk', algorithm.public);
                 const exportedPrivatKey = await QuickCrypto.subtle.exportKey('jwk', privateKey);
-                // const exportedPublicKey = await QuickCrypto.subtle.exportKey('raw', algorithm.public);
-                // const exportedPrivatKey = await QuickCrypto.subtle.exportKey('raw', privateKey);
-                console.log('ExportedPublicKey', exportedPublicKey);
-                console.log('ExportedPrivateKey', exportedPrivatKey);
 
                 const privateKeyHex = convertToHexString(exportedPrivatKey, 'd');
                 const publicKeyHexX = convertToHexString(exportedPublicKey, 'x');
                 const publicKeyHexY = convertToHexString(exportedPublicKey, 'y');
-                const PublicKeyHex = "04" + publicKeyHexX + publicKeyHexY;
-
-                const sharedSecret = p256.getSharedSecret(privateKeyHex, PublicKeyHex, false);
+                const publicKeyHex = "04" + publicKeyHexX + publicKeyHexY;
+                console.log("My priv: ", privateKeyHex);
+                console.log("My priv X: ", exportedPrivatKey.x);
+                console.log("My priv Y: ", exportedPrivatKey.y);
+                console.log("Their x: ", publicKeyHexX);
+                console.log("Their y: ", publicKeyHexY);
+                console.log('Public Key from JWK: ', publicKeyHex)
+                const sharedSecret = p256.getSharedSecret(privateKeyHex, publicKeyHex, false);
+                const xCoordinateOnly = new Uint8Array(sharedSecret.subarray(1, 1 + 32));
                 // Convert uint8Array to ArrayBuffer
-                const sharedSecretBuffer = sharedSecret.buffer.slice(
-                    sharedSecret.byteOffset,
-                    sharedSecret.byteOffset + sharedSecret.byteLength
+                const sharedSecretBuffer = xCoordinateOnly.buffer.slice(
+                    xCoordinateOnly.byteOffset,
+                    xCoordinateOnly.byteOffset + xCoordinateOnly.byteLength
                 );
+                console.log("sharedSecretBuffer length: ", sharedSecretBuffer.byteLength)
+                console.log("sharedSecret: ", sharedSecret)
+                console.log("xCoordinateOnly: ", xCoordinateOnly)
                 return sharedSecretBuffer;
             } catch (error) {
                 console.error('SETUP: Error in deriveBits', error);
@@ -76,7 +79,8 @@ function setupCrypto() {
             ...QuickCrypto,
             subtle: subtleImplementation,
             getRandomValues: ((array) => QuickCrypto.getRandomValues(array)),
-            randomUUID: () => Crypto.randomUUID()
+            randomUUID: () => Crypto.randomUUID(),
+            createHmac: QuickCrypto.createHmac
         };
 
         console.log('SETUP: Crypto setup complete');

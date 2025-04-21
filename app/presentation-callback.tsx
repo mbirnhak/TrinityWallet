@@ -20,8 +20,7 @@ export default function PresentationCallback() {
                 if (request_uri && client_id) {
                     console.log("Request URI: ", request_uri);
                     console.log("Client ID: ", client_id);
-                    await SecureStore.setItemAsync(storedValueKeys.VERIFIER_CLIENT_ID_KEY, client_id)
-                    await retrieve_authorization_request(request_uri)
+                    await retrieve_authorization_request(request_uri, client_id)
                     router.replace('/(app)/home');
                 } else {
                     console.log('[Presentation Callback] Missing required parameters');

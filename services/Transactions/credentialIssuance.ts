@@ -99,15 +99,15 @@ const CREDENTIAL_DETAILS: Record<
 };
 
 const VCT_TYPES = {
-    "eu.europa.ec.eudi.ehic_sd_jwt_vc": "urn:eu.europa.ec.eudi:ehic:1",
-    "eu.europa.ec.eudi.pid_jwt_vc_json": "urn:eu.europa.ec.eudi:pid:1",
-    "eu.europa.ec.eudi.msisdn_sd_jwt_vc": "urn:eu.europa.ec.eudi:msisdn:1",
-    "eu.europa.ec.eudi.pseudonym_over18_sd_jwt_vc": "urn:eu.europa.ec.eudi:pseudonym_age_over_18:1",
-    "eu.europa.ec.eudi.iban_sd_jwt_vc": "urn:eu.europa.ec.eudi:iban:1",
-    "eu.europa.ec.eudi.hiid_sd_jwt_vc": "urn:eu.europa.ec.eudi:hiid:1",
-    "eu.europa.ec.eudi.tax_sd_jwt_vc": "urn:eu.europa.ec.eudi:tax:1",
-    "eu.europa.ec.eudi.pda1_sd_jwt_vc": "urn:eu.europa.ec.eudi:pda1:1",
-    "eu.europa.ec.eudi.por_sd_jwt_vc": "urn:eu.europa.ec.eudi:por:1",
+  "eu.europa.ec.eudi.ehic_sd_jwt_vc": "urn:eu.europa.ec.eudi:ehic:1",
+  "eu.europa.ec.eudi.pid_jwt_vc_json": "urn:eu.europa.ec.eudi:pid:1",
+  "eu.europa.ec.eudi.msisdn_sd_jwt_vc": "urn:eu.europa.ec.eudi:msisdn:1",
+  "eu.europa.ec.eudi.pseudonym_over18_sd_jwt_vc": "urn:eu.europa.ec.eudi:pseudonym_age_over_18:1",
+  "eu.europa.ec.eudi.iban_sd_jwt_vc": "urn:eu.europa.ec.eudi:iban:1",
+  "eu.europa.ec.eudi.hiid_sd_jwt_vc": "urn:eu.europa.ec.eudi:hiid:1",
+  "eu.europa.ec.eudi.tax_sd_jwt_vc": "urn:eu.europa.ec.eudi:tax:1",
+  "eu.europa.ec.eudi.pda1_sd_jwt_vc": "urn:eu.europa.ec.eudi:pda1:1",
+  "eu.europa.ec.eudi.por_sd_jwt_vc": "urn:eu.europa.ec.eudi:por:1",
 };
 
 // We'll use a single LogService instance for all functions
@@ -164,7 +164,7 @@ async function generateState() {
  */
 async function fetchMetadata() {
   const logService = await getLogService();
-  
+
   try {
     console.log("[Step 1.a] Fetching OpenID Configuration...");
     const oidcResponse = await fetch(
@@ -182,14 +182,14 @@ async function fetchMetadata() {
       storedValueKeys.METADATA_STORAGE_KEY,
       JSON.stringify(oidcMetadata)
     );
-    
+
     await logService.createLog({
       transaction_type: 'credential_issuance',
       status: 'success',
       details: 'Successfully fetched issuer metadata',
       relying_party: constants.ISSUER_URL
     });
-    
+
     return { oidcMetadata, credMetadata };
   } catch (error) {
     console.error("[Metadata] Error:", error);
@@ -212,7 +212,7 @@ async function pushAuthorizationRequest(
   selectedCredentials: string[] = []
 ) {
   const logService = await getLogService();
-  
+
   try {
     console.log("[Step 2] Initiating Push Authorization Request...");
 
@@ -268,7 +268,7 @@ async function pushAuthorizationRequest(
     });
 
     const parResponse = await response.json();
-    
+
     await logService.createLog({
       transaction_type: 'credential_issuance',
       status: 'success',
@@ -294,12 +294,12 @@ async function pushAuthorizationRequest(
  */
 async function initiateAuthorization(oidcMetadata: any, requestUri: string) {
   const logService = await getLogService();
-  
+
   try {
     console.log("[Step 3] Creating authorization URL...");
     const authUrl = `${oidcMetadata.authorization_endpoint}?client_id=${constants.EU_ISSUER_CLIENT_ID}&request_uri=${requestUri}`;
     await Linking.openURL(authUrl);
-    
+
     await logService.createLog({
       transaction_type: 'credential_issuance',
       status: 'pending',
@@ -337,7 +337,7 @@ export function findIssuerKeyByType(
  */
 export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
   const logService = await getLogService();
-  
+
   try {
     console.log("[Step 4] Exchanging code for token...");
 
@@ -423,16 +423,14 @@ export async function exchangeCodeForToken(code: string, oidcMetadata: any) {
  */
 async function generateJWTProof(
   nonce?: string
-): Promise<{ jwt: string; sdJwt: SdJwt }> {
+): Promise<{ jwt: string; sdJwt: SdJwt, keyPair: { privateKey: object, publicKey: object } }> {
   const logService = await getLogService();
-  
+
   try {
     console.log("[Step 5] Generating JWT proof with nonce");
     const sdJwt = await createSdJwt();
     // Generate a key pair for signing
-    const { privateKey, publicKey } = sdJwt.getKeyPair();
-    SecureStore.setItemAsync("pub-key", JSON.stringify(publicKey));
-    SecureStore.setItemAsync("priv-key", JSON.stringify(privateKey));
+    const keyPair = sdJwt.getKeyPair() as { privateKey: object, publicKey: object };
     console.log("Public Key Generated");
     console.log("Private Key Generated");
     // const kid = await jose.calculateJwkThumbprint(publicKey as JWK);  // Use kid instead of embedding key
@@ -440,7 +438,7 @@ async function generateJWTProof(
       typ: "openid4vci-proof+jwt",
       alg: "ES256",
       // kid: kid,  // Use kid instead of embedding key
-      jwk: publicKey, // Include the public key in the header
+      jwk: keyPair.publicKey, // Include the public key in the header
     };
     const payload = {
       iss: constants.EU_ISSUER_CLIENT_ID,
@@ -461,8 +459,8 @@ async function generateJWTProof(
     const encodedSignature = base64url(signature);
     const jwt = `${signingInput}.${encodedSignature}`;
     console.log("[Step 5] Generated JWT");
-
-    return { jwt, sdJwt };
+    return { jwt, sdJwt, keyPair: keyPair as { privateKey: object; publicKey: object } };
+    return { jwt, sdJwt, keyPair };
   } catch (error) {
     console.error("[Step 5] Error generating JWT proof:", error);
     await logService.createLog({
@@ -479,7 +477,7 @@ async function generateCredentialRequest(
   authDetails: Record<string, string>[]
 ) {
   const logService = await getLogService();
-  
+
   if (authDetails.length < 1) {
     console.log("No credentials in auth details");
     await logService.createLog({
@@ -491,8 +489,10 @@ async function generateCredentialRequest(
     return null;
   }
   let requests = [];
+  let keyPairs = [];
   for (const credential of authDetails) {
-    const { jwt } = await generateJWTProof();
+    const { jwt, keyPair } = await generateJWTProof();
+    keyPairs.push(keyPair);
     const identifier = credential?.credential_configuration_id;
     const vct = credential?.vct as string;
     const docType = credential?.doctype as string;
@@ -530,13 +530,13 @@ async function generateCredentialRequest(
   }
   // If theres only one credential, return it as a CredentialRequest
   if (requests.length == 1) {
-    return requests[0];
+    return { request: requests[0], keyPairs };
   } else {
     // If more than one credential, create a BatchRequest and return it
     const batchRequest: BatchRequest = {
       credential_requests: requests,
     };
-    return batchRequest;
+    return { request: batchRequest, keyPairs };
   }
 }
 
@@ -552,7 +552,7 @@ async function requestCredentialWithToken(
 ): Promise<CredentialResponse> {
   const logService = LogService.getInstance();
   let storage: CredentialStorage | null = null;
-  
+
   // Setup credential storage instance
   try {
     const dbEncryptionKey = await getDbEncryptionKey();
@@ -581,7 +581,11 @@ async function requestCredentialWithToken(
     console.log("[Step 6.1] Generating initial JWT proof...");
 
     // Step 6.2: Generate credential request with proof (batch request if multiple are requested)
-    const request = await generateCredentialRequest(authDetails);
+    const result = await generateCredentialRequest(authDetails);
+    if (!result) {
+      throw new Error("Failed to generate credential request");
+    }
+    const { request, keyPairs } = result;
     console.log("REQUEST: ", request);
     let response;
     if (num_credentials == 1) {
@@ -650,18 +654,17 @@ async function requestCredentialWithToken(
         if (credential) {
           try {
             console.log(`[Step 6.5] Storing credential ${i}...`);
-            const success = await storage.storeCredential(credential);
+            const success = await storage.storeCredential(credential, keyPairs[i]);
             console.log("Result of credential storage: ", success);
             console.log(`[Step 6.5] Successfully stored credential ${i}`);
             storedCredentials.push(i);
-            
+
             // No need to log here since storeCredential in CredentialStorage does the logging
           } catch (storageError) {
-            const errorMessage = `Error storing credential ${i}: ${
-              storageError instanceof Error
-                ? storageError.message
-                : String(storageError)
-            }`;
+            const errorMessage = `Error storing credential ${i}: ${storageError instanceof Error
+              ? storageError.message
+              : String(storageError)
+              }`;
             console.error("[Step 6.5]", errorMessage);
             storageErrors.push(errorMessage);
           }
@@ -683,7 +686,7 @@ async function requestCredentialWithToken(
           "[Step 6.5] All credentials stored successfully:",
           storedCredentials
         );
-        
+
         await logService.createLog({
           transaction_type: 'credential_issuance',
           status: 'success',
@@ -692,7 +695,7 @@ async function requestCredentialWithToken(
         });
       } else {
         console.warn("[Step 6.5] No credentials were stored");
-        
+
         await logService.createLog({
           transaction_type: 'credential_issuance',
           status: 'failed',
@@ -705,20 +708,20 @@ async function requestCredentialWithToken(
         try {
           console.log(`[Step 6.5] Storing single credential...`);
           const success = await storage.storeCredential(
-            responseData.credential
+            responseData.credential,
+            keyPairs[0]
           );
           console.log("Result of credential storage: ", success);
           console.log(`[Step 6.5] Successfully stored credential`);
-          
+
           // No need to log here since storeCredential in CredentialStorage does the logging
         } catch (storageError) {
-          const errorMessage = `Error storing credential: ${
-            storageError instanceof Error
-              ? storageError.message
-              : String(storageError)
-          }`;
+          const errorMessage = `Error storing credential: ${storageError instanceof Error
+            ? storageError.message
+            : String(storageError)
+            }`;
           console.error("[Step 6.5]", errorMessage);
-          
+
           await logService.createLog({
             transaction_type: 'credential_issuance',
             status: 'failed',
@@ -728,7 +731,7 @@ async function requestCredentialWithToken(
         }
       } else {
         console.warn("[Step 6.5] No credentials received in response");
-        
+
         await logService.createLog({
           transaction_type: 'credential_issuance',
           status: 'failed',
@@ -748,19 +751,50 @@ async function requestCredentialWithToken(
       "[Step 6] ====== Error in Batch Credential Request Flow ======"
     );
     console.error("[Step 6] Error details:", error);
-    
+
     await logService.createLog({
       transaction_type: 'credential_issuance',
       status: 'failed',
       details: `Error in credential request: ${error instanceof Error ? error.message : String(error)}`,
       relying_party: constants.ISSUER_URL
     });
-    
+
     throw error;
   } finally {
-    // No need to close database connections anymore
-    // They're automatically closed after each operation in our new pattern
-    console.log("[Step 6] Database operations completed");
+    // Close the database connection here
+    storage.close();
+    console.log("[Step 6] Database connection closed, operations completed");
+  }
+}
+
+async function requestStudentCredential(username: string = 'mbirnhak') {
+  const dbEncryptionKey = await getDbEncryptionKey();
+  const storage = new CredentialStorage(dbEncryptionKey);
+  try {
+    const credentialResponse = await fetch(
+      `${constants.TRIN_ISSUER_URL}/credential-issuance?username=${username}`
+    );
+    const studentCredential = await credentialResponse.json();
+    if (studentCredential.credential) {
+      // Student ID Credential does not include cnf for binding credential to holder
+      const keyPair = { privateKey: { x: "", y: "" }, publicKey: { x: "", y: "" } }
+      const success = await storage.storeCredential(studentCredential.credential, keyPair);
+      if (success == true) {
+        console.log("Successfully stored student credential");
+        return true;
+      } else {
+        console.log("Failed to store student credential");
+        return false;
+      }
+    } else {
+      console.log("Student credential was not returned in request")
+      return false;
+    }
+  } catch (error) {
+    console.log("Error during issuance of student credential")
+    return false;
+  } finally {
+    storage.close()
   }
 }
 
@@ -769,7 +803,7 @@ async function requestCredentialWithToken(
  */
 export async function requestCredential(selectedCredentialIds: string[]) {
   const logService = await getLogService();
-  
+
   try {
     await logService.createLog({
       transaction_type: 'credential_issuance',
@@ -777,7 +811,20 @@ export async function requestCredential(selectedCredentialIds: string[]) {
       details: `Initiating credential request for ${selectedCredentialIds.join(', ')}`,
       relying_party: constants.ISSUER_URL
     });
-    
+
+    // Deal with student credential seperately
+    if (selectedCredentialIds.includes('trin.coll.student_id_sd_jwt_vc')) {
+      const index = selectedCredentialIds.indexOf('trin.coll.student_id_sd_jwt_vc');
+      selectedCredentialIds.splice(index, 1);
+      try {
+        await requestStudentCredential();
+      } catch (error) {
+        console.log("Error Requesting Student Credential: ", error)
+      }
+      if (selectedCredentialIds.length == 0) {
+        return;
+      }
+    }
     // Step 1: Fetch metadata
     const { oidcMetadata } = await fetchMetadata();
 
@@ -792,14 +839,14 @@ export async function requestCredential(selectedCredentialIds: string[]) {
     );
     if (parResponse === null) {
       console.error("[Credential Request] No authorization details found");
-      
+
       await logService.createLog({
         transaction_type: 'credential_issuance',
         status: 'failed',
         details: 'No authorization details found',
         relying_party: constants.ISSUER_URL
       });
-      
+
       return "Error";
     }
     // Step 3: Initiate authorization

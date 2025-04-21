@@ -47,8 +47,8 @@ export class CredentialStorage {
         this.drizzleDb = drizzle(this.db, { schema });
     }
 
-    async storeCredential(credential_string: string) {
-        const sdjwt_success = await this.storeSdJwtCredential(credential_string);
+    async storeCredential(credential_string: string, keyPair: { privateKey: object, publicKey: object }) {
+        const sdjwt_success = await this.storeSdJwtCredential(credential_string, keyPair);
         if (sdjwt_success == true) {
             return true;
         } else {
@@ -86,27 +86,11 @@ export class CredentialStorage {
         return false;
     }
 
-    private async storeSdJwtCredential(credential_string: string): Promise<boolean> {
+    private async storeSdJwtCredential(credential_string: string, keyPair: { privateKey: object, publicKey: object }): Promise<boolean> {
         try {
             const credential_format = "sd_jwt_vc";
-            const private_key_string = await SecureStore.getItemAsync("priv-key");
-            const public_key_string = await SecureStore.getItemAsync("pub-key");
-            if (!public_key_string || !private_key_string) {
-                console.log("Missing public or private key for storing credentials");
-                try {
-                    await this.logService.createLog({
-                        transaction_type: 'credential_issuance',
-                        status: 'failed',
-                        details: 'Missing public or private key for storing credentials'
-                    });
-                } catch (error) {
-                    console.error("Error logging missing keys:", error);
-                }
-                return false;
-            }
-            const private_key = JSON.parse(private_key_string);
-            const public_key = JSON.parse(public_key_string);
-
+            const private_key = keyPair.privateKey;
+            const public_key = keyPair.publicKey;
             const sdjwt_parser = await createSdJwt(private_key, public_key);
             const credential_claims: Record<string, any> = await sdjwt_parser.getClaims(credential_string) as Record<string, any>;
             const parsed_credential = await sdjwt_parser.decodeCredential(credential_string);
@@ -114,7 +98,7 @@ export class CredentialStorage {
             iss_date = credential_claims.iat;
             exp_date = credential_claims.exp;
 
-            if (!credential_claims || !parsed_credential || !iss_date || !exp_date) {
+            if (!credential_claims || !parsed_credential || !iss_date) {
                 console.log("Missing fields for storing credentials");
                 try {
                     await this.logService.createLog({
@@ -236,6 +220,33 @@ export class CredentialStorage {
                     `)
                     );
             });
+        } catch (error) {
+            console.log("Error retrieving credential: ", error);
+            try {
+                await this.logService.createLog({
+                    transaction_type: 'error',
+                    status: 'failed',
+                    details: `Error retrieving credentials by JSON path: ${error instanceof Error ? error.message : String(error)}`
+                });
+            } catch (logError) {
+                console.error("Error logging credential retrieval by JSON path failure:", logError);
+            }
+            return null;
+        }
+    }
+
+    async retrieveCredentialByJsonPathValue(jsonPath: string, expectedValue: any): Promise<string | null> {
+        try {
+            // Query for credentials where the JSON path matches the expected value
+            const result = await this.drizzleDb
+                .select({
+                    credential_string: credentials.credential_string
+                })
+                .from(credentials)
+                .where(sql`json_extract(credential_claims, ${jsonPath}) = ${expectedValue}`);
+
+            // Return the first matching credential ID, or null if none found
+            return result.length > 0 ? result[0].credential_string : null;
         } catch (error) {
             console.log("Error retrieving credential: ", error);
             try {

@@ -25,6 +25,13 @@ export default function RequestCredentials() {
 
   const credentials = [
     { 
+      id: 'trin.coll.student_id_sd_jwt_vc', 
+      name: 'Student ID Credential', 
+      description: 'Credential for verifying student status',
+      icon: 'person-outline',
+      color: theme.primary
+    },
+    { 
       id: 'eu.europa.ec.eudi.pid_jwt_vc_json', 
       name: 'PID Test', 
       description: 'Personal Identity Document using SD-JWT format',

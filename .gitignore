@@ -48,3 +48,7 @@ ios/
 android/
 
 # @end expo-cli
+node_modules
+
+package-lock.json
+yarn.lock

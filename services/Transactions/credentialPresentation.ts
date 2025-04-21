@@ -1,14 +1,13 @@
 // services/Transaction/credentialPresentation.ts
-import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import base64url from 'base64url';
 import { createSdJwt, SdJwt } from '../Credentials/SdJwtVc';
 import { CredentialStorage } from '../credentialStorage';
-import { storedValueKeys } from '../Utils/enums';
 import { getDbEncryptionKey } from '../Utils/crypto';
 import LogService from '../LogService';
 import { Validator } from 'jsonschema';
 import * as jose from 'jose'
+import * as Linking from "expo-linking";
 import { JWK, CryptoKey } from 'react-native-quick-crypto/lib/typescript/src/keys';
 
 const TRIN_LIB_SERVER_ID = 'lib-verification-service-123';
@@ -36,7 +35,7 @@ type credentialMatches = {
     requested_claims: string[];
 }
 
-export async function retrieve_authorization_request(request_uri: string) {
+export async function retrieve_authorization_request(request_uri: string, client_id: string) {
     console.log('[Auth Request] Retrieving authorization request');
     try {
         await logService.createLog({
@@ -56,7 +55,6 @@ export async function retrieve_authorization_request(request_uri: string) {
             throw new Error(errorMsg);
         }
 
-        const client_id = await SecureStore.getItemAsync(storedValueKeys.VERIFIER_CLIENT_ID_KEY);
         if (client_id == TRIN_LIB_SERVER_ID) {
             await logService.createLog({
                 transaction_type: 'credential_presentation',
@@ -92,7 +90,10 @@ export async function retrieve_authorization_request(request_uri: string) {
     }
 }
 
-async function trin_send_presentation(presentation_definition: JSON) {
+async function trin_send_presentation(presentation_definition: Record<string, any>) {
+    console.log(presentation_definition);
+    const dbEncryptionKey = await getDbEncryptionKey();
+    const storage = new CredentialStorage(dbEncryptionKey);
     try {
         await logService.createLog({
             transaction_type: 'credential_presentation',
@@ -100,15 +101,47 @@ async function trin_send_presentation(presentation_definition: JSON) {
             details: 'Processing internal presentation',
             relying_party: TRIN_LIB_SERVER_ID
         });
+        const credential_string = await storage.retrieveCredentialByJsonPathValue('$.vct', 'trin.coll.student_id_sd_jwt_vc')
+        if (credential_string == null) {
+            console.log("No matching student credential");
+            return false;
+        }
+        const sdJwt = await createSdJwt();
+        const disclosureFrame = {
+            'studentId': true
+        }
+        const presentation = await sdJwt.presentCredential(credential_string, disclosureFrame);
+        const presentation_body = JSON.stringify({
+            credential: presentation
+        })
+        const response = await fetch(presentation_definition.callback_url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: presentation_body
+        })
 
-        // Implementation to be added
-
-        await logService.createLog({
-            transaction_type: 'credential_presentation',
-            status: 'success',
-            details: 'Internal presentation completed',
-            relying_party: TRIN_LIB_SERVER_ID
-        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.status === 'success') {
+            // Extract the redirect_url from the response
+            const redirectUrl = data.redirect_url;
+            await Linking.openURL(redirectUrl);
+            await logService.createLog({
+                transaction_type: 'credential_presentation',
+                status: 'success',
+                details: 'Internal presentation completed',
+                relying_party: TRIN_LIB_SERVER_ID
+            });
+            return true;
+        } else {
+            console.log('Verification failed:', data.message);
+            return false;
+        }
+        return true;
     } catch (error) {
         console.error('[Presentation] Error with internal presentation:', error);
         await logService.createLog({
@@ -117,6 +150,9 @@ async function trin_send_presentation(presentation_definition: JSON) {
             details: `Internal presentation failed: ${error instanceof Error ? error.message : String(error)}`,
             relying_party: TRIN_LIB_SERVER_ID
         });
+        return null;
+    } finally {
+        storage.close();
     }
 }
 
@@ -259,7 +295,8 @@ async function send_presentation(decoded_jwt: Record<string, unknown>) {
     }
 
     console.log("Presentation body: ", presentation_body);
-    const response = fetch(response_uri, {
+    console.log("RESPONSE URI: ", response_uri)
+    const response = await fetch(response_uri, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
@@ -485,6 +522,7 @@ async function generatePresentationBody(response_mode: string, state: string, pr
                 const jwks_response = await fetch(jwks_uri);
                 jwks = await jwks_response.json();
             }
+            console.log("VERIFIER PUB KEYS JSON: ", jwks)
             const key = jwks.keys[0] as JWK;
             console.log("Before import key");
             const importedKey = await jose.importJWK(key, alg) as CryptoKey;
@@ -496,8 +534,6 @@ async function generatePresentationBody(response_mode: string, state: string, pr
             //     enumerable: false
             // });
 
-            console.log("import key: ", importedKey)
-            console.log("***KEY***: ", key);
             const presentationDataUint8Array = new TextEncoder().encode(presentation_data.toString());
             // Create a JWE with the presentation data as the payload
             const jwe = await new jose.CompactEncrypt(presentationDataUint8Array)
