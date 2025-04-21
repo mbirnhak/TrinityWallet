@@ -1,4 +1,4 @@
-import { View, ScrollView, StyleSheet, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, ScrollView, StyleSheet, Text, TouchableOpacity, Alert, StatusBar, Platform } from 'react-native';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,14 +13,11 @@ export default function RequestCredentials() {
   const [selectedCredentials, setSelectedCredentials] = useState({});
   const [loading, setLoading] = useState(false);
   
-  // Initialize LogService - but don't create a separate instance here
+  // Initialize LogService
   const logService = LogService.getInstance();
   
   // Initialize LogService in useEffect and cleanup properly
   useEffect(() => {
-    // We'll initialize when needed in handleRequestCredentials
-    // to avoid creating multiple database connections
-    
     return () => {
       // No need to close here - we'll handle this in the handleRequestCredentials function
     };
@@ -85,7 +82,8 @@ export default function RequestCredentials() {
     }));
   };
 
-  const handleRequestCredentials = async () => {
+  // First step - Validate selection and navigate to PIN authentication screen
+  const handleProceedToAuthentication = () => {
     const selectedCount = Object.values(selectedCredentials).filter(Boolean).length;
     
     if (selectedCount === 0) {
@@ -93,65 +91,14 @@ export default function RequestCredentials() {
       return;
     }
 
-    // Get array of selected credential IDs
-    const selectedCredentialIds = Object.keys(selectedCredentials).filter(id => selectedCredentials[id]);
-
-    try {
-      setLoading(true);
-      
-      // Initialize LogService for this operation only
-      await logService.initialize();
-      
-      // Log the credential request initiation
-      await logService.createLog({
-        transaction_type: 'credential_issuance',
-        status: 'pending',
-        details: `Requesting ${selectedCount} credential(s): ${selectedCredentialIds.map(id => 
-          credentials.find(c => c.id === id)?.name || id
-        ).join(', ')}`,
-        relying_party: 'EU Issuer'
-      });
-      
-      // Pass the selected credential IDs to the request function
-      // Note: requestCredential now handles its own LogService instance
-      const response = await requestCredential(selectedCredentialIds);
-      
-      if (response === 'Error') {
-        // No need to log here - already logged in requestCredential
-        Alert.alert('Error', 'Failed to request credentials. Please try again later.');
-        return;
+    // Use the dedicated PIN authentication screen
+    router.push({
+      pathname: '/pin-auth',
+      params: {
+        callback: 'request-credentials',
+        selectedIds: JSON.stringify(Object.keys(selectedCredentials).filter(id => selectedCredentials[id]))
       }
-      
-      // Success alert
-      Alert.alert(
-        'Success', 
-        'Your credential request has been submitted successfully',
-        [{ text: 'OK', onPress: () => router.back() }]
-      );
-    } catch (error) {
-      console.error('Error requesting credentials:', error);
-      
-      // Try to log the error - but catch any DB errors
-      try {
-        await logService.createLog({
-          transaction_type: 'credential_issuance',
-          status: 'failed',
-          details: `Error requesting credentials: ${error.message || 'Unknown error'}`,
-          relying_party: 'EU Issuer'
-        });
-      } catch (logError) {
-        console.error('Error logging credential request failure:', logError);
-      }
-      
-      Alert.alert(
-        'Error',
-        'Failed to request credentials. Please try again later.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      // Don't close the logService here - it's now centrally managed in the credentialIssuance service
-      setLoading(false);
-    }
+    });
   };
 
   const CredentialCard = ({ credential }) => {
@@ -197,8 +144,10 @@ export default function RequestCredentials() {
     );
   };
 
+  // Main component render
   return (
     <View style={[styles.container, { backgroundColor: theme.dark }]}>
+      {/* Main screen */}
       <View style={[styles.header, { backgroundColor: theme.dark, borderBottomColor: theme.border }]}>
         <TouchableOpacity 
           style={styles.backButton}
@@ -242,7 +191,7 @@ export default function RequestCredentials() {
       }]}>
         <TouchableOpacity
           style={styles.requestButton}
-          onPress={handleRequestCredentials}
+          onPress={handleProceedToAuthentication}
           disabled={loading}
         >
           <LinearGradient
@@ -250,7 +199,7 @@ export default function RequestCredentials() {
             style={styles.buttonGradient}
           >
             <Text style={[styles.buttonText, { color: theme.text }]}>
-              {loading ? 'Requesting...' : 'Request Selected Credentials'}
+              {loading ? 'Processing...' : 'Continue'}
             </Text>
             {!loading && <Ionicons name="arrow-forward" size={20} color={theme.text} />}
           </LinearGradient>

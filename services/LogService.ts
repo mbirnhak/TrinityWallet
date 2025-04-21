@@ -105,7 +105,8 @@ export class LogService {
         try {
             return await withDB(async (db) => {
                 return await db.query.logs.findMany({
-                    orderBy: (logs, { desc }) => [desc(logs.transaction_datetime)]
+                    orderBy: (logs: typeof schema.logs.$inferSelect, { desc }: { desc: (column: any) => any }) => 
+                        [desc(logs.transaction_datetime)]
                 });
             });
         } catch (error) {
@@ -121,8 +122,10 @@ export class LogService {
         try {
             return await withDB(async (db) => {
                 return await db.query.logs.findMany({
-                    where: (logs, { eq }) => eq(logs.transaction_type, transactionType),
-                    orderBy: (logs, { desc }) => [desc(logs.transaction_datetime)]
+                    where: (logs: typeof schema.logs.$inferSelect, { eq }: { eq: Function }) => 
+                        eq(logs.transaction_type, transactionType),
+                    orderBy: (logs: typeof schema.logs.$inferSelect, { desc }: { desc: Function }) => 
+                        [desc(logs.transaction_datetime)]
                 });
             });
         } catch (error) {

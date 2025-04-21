@@ -232,6 +232,109 @@ export class CredentialStorage {
         }
     }
 
+    async deleteCredentialByType(credentialType: string) {
+        try {
+            // First retrieve the credential to get info for logging
+            const allCredentials = await this.retrieveCredentials();
+            
+            // Find the credential with the matching type from our mapping
+            let credentialToDelete = null;
+            let vctPattern = null;
+            
+            // Map the short type back to VCT pattern for matching
+            const typeToVctMap = {
+                'pid': 'eu.europa.ec.eudi.pid',
+                'msisdn': 'eu.europa.ec.eudi.msisdn',
+                'ehic': 'eu.europa.ec.eudi.ehic',
+                'age_verification': 'eu.europa.ec.eudi.pseudonym_over18',
+                'iban': 'eu.europa.ec.eudi.iban',
+                'health_id': 'eu.europa.ec.eudi.hiid',
+                'tax': 'eu.europa.ec.eudi.tax',
+                'pda1': 'eu.europa.ec.eudi.pda1',
+                'por': 'eu.europa.ec.eudi.por'
+            };
+            
+            // Get the VCT pattern for the credential type
+            vctPattern = typeToVctMap[credentialType];
+            
+            if (!vctPattern) {
+                throw new Error(`Unknown credential type: ${credentialType}`);
+            }
+            
+            // Find the matching credential
+            for (const credential of allCredentials || []) {
+                // Parse credential claims if they're a string
+                const claims = typeof credential.credential_claims === 'string' 
+                    ? JSON.parse(credential.credential_claims) 
+                    : credential.credential_claims;
+                
+                // Check if VCT matches our pattern
+                const vct = claims.vct || '';
+                if (vct && vct.includes(vctPattern)) {
+                    credentialToDelete = credential;
+                    break;
+                }
+                
+                // Check VC type array as a fallback
+                if (!credentialToDelete && claims.vc) {
+                    const typeArray = Array.isArray(claims.vc._type) ? claims.vc._type : 
+                                     (typeof claims.vc._type === 'string' ? [claims.vc._type] : []);
+                    
+                    if (typeArray.some((t) => typeof t === 'string' && t.includes(vctPattern))) {
+                        credentialToDelete = credential;
+                        break;
+                    }
+                }
+            }
+            
+            if (!credentialToDelete) {
+                throw new Error(`No credential found of type: ${credentialType}`);
+            }
+            
+            // Get credential ID and issuer for logging
+            const credentialId = credentialToDelete.id;
+            const claims = typeof credentialToDelete.credential_claims === 'string' 
+                ? JSON.parse(credentialToDelete.credential_claims) 
+                : credentialToDelete.credential_claims;
+            const issuer = claims.iss || 'Unknown Issuer';
+            
+            // Delete the credential from the database
+            await withDB(this.dbEncryptionKey, async (db) => {
+                return await db.delete(credentials)
+                    .where(eq(credentials.id, credentialId));
+            });
+            
+            // Log successful deletion
+            try {
+                await this.logService.createLog({
+                    transaction_type: 'credential_presentation',
+                    status: 'success',
+                    details: `Deleted ${credentialType} credential`,
+                    relying_party: issuer
+                });
+            } catch (error) {
+                console.error("Error logging credential deletion:", error);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error("Error deleting credential:", error);
+            
+            // Log the error
+            try {
+                await this.logService.createLog({
+                    transaction_type: 'credential_presentation',
+                    status: 'failed',
+                    details: `Error deleting credential: ${error instanceof Error ? error.message : String(error)}`
+                });
+            } catch (logError) {
+                console.error("Error logging credential deletion failure:", logError);
+            }
+            
+            return false;
+        }
+    }
+
     public close(): void {
         // No need to close anything since we're using withDB pattern
         // This is just a placeholder for backward compatibility

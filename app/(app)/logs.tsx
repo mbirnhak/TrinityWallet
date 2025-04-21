@@ -41,8 +41,9 @@ export default function Logs() {
       setLoading(true);
       const logData = await logService.getLogs();
       
-      // Sort logs by timestamp, most recent first
-      const sortedLogs = logData.sort((a, b) => b.transaction_datetime - a.transaction_datetime);
+      // Make a clean copy of the data and ensure it's sorted by timestamp, most recent first
+      // Using slice() to create a copy before sorting to avoid mutating the original array
+      const sortedLogs = logData.slice().sort((a, b) => b.transaction_datetime - a.transaction_datetime);
       setLogs(sortedLogs);
     } catch (error) {
       console.error('Error loading logs:', error);
@@ -116,25 +117,38 @@ export default function Logs() {
 
   // Filter logs based on search and filters
   const filteredLogs = useMemo(() => {
-    return logs
-      .filter(log => {
-        // Check if log type is selected
-        if (!selectedTypes[log.transaction_type]) return false;
-        
-        // Check if status is selected
-        if (!selectedStatus[log.status]) return false;
-        
-        // Apply search query filter
-        if (searchQuery.trim() === '') return true;
-        
-        const query = searchQuery.toLowerCase();
-        return (
-          (log.details?.toLowerCase().includes(query) || false) ||
-          log.transaction_type.toLowerCase().includes(query) ||
-          (log.relying_party?.toLowerCase().includes(query) || false)
-        );
-      });
-      // Logs are already sorted by date in loadLogs function
+    // First apply filters
+    const filtered = logs.filter(log => {
+      // Check if log type is selected
+      if (!selectedTypes[log.transaction_type]) return false;
+      
+      // Check if status is selected
+      if (!selectedStatus[log.status]) return false;
+      
+      // Apply search query filter
+      if (searchQuery.trim() === '') return true;
+      
+      const query = searchQuery.toLowerCase();
+      return (
+        (log.details?.toLowerCase().includes(query) || false) ||
+        log.transaction_type.toLowerCase().includes(query) ||
+        (log.relying_party?.toLowerCase().includes(query) || false)
+      );
+    });
+    
+    // Normalize timestamps and sort by most recent first
+    return filtered.sort((a, b) => {
+      // Normalize timestamps to ensure consistent comparison
+      const timeA = String(a.transaction_datetime).length > 10 
+        ? a.transaction_datetime / 1000 // Convert milliseconds to seconds if timestamp is too large
+        : a.transaction_datetime;
+      
+      const timeB = String(b.transaction_datetime).length > 10 
+        ? b.transaction_datetime / 1000 // Convert milliseconds to seconds if timestamp is too large
+        : b.transaction_datetime;
+      
+      return timeB - timeA; // Most recent first
+    });
   }, [searchQuery, selectedTypes, selectedStatus, logs]);
 
   // Toggle filter selection
@@ -151,6 +165,15 @@ export default function Logs() {
       [status]: !prev[status]
     }));
   };
+
+  // Debugging helper to check if logs are sorted correctly
+  useEffect(() => {
+    if (filteredLogs.length > 0) {
+      filteredLogs.forEach(log => {
+        const date = new Date(log.transaction_datetime * 1000);
+      });
+    }
+  }, [filteredLogs]);
 
   // Render a single log item
   const renderLogItem = ({ item }: { item: Log }) => (

@@ -1,4 +1,4 @@
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Tabs, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { View, StyleSheet } from 'react-native';
@@ -26,6 +26,10 @@ export const theme = {
 export default function ProtectedLayout() {
   const { authState, isLoading } = useAuth();
   const { theme: currentTheme } = useTheme();
+  const params = useLocalSearchParams();
+  
+  // Check if we should hide the tab bar
+  const hideTabBar = params.hideTabBar === 'true';
 
   useEffect(() => {
     Font.loadAsync({
@@ -74,6 +78,8 @@ export default function ProtectedLayout() {
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
+          // Hide the tab bar when hideTabBar is true
+          display: hideTabBar ? 'none' : 'flex',
         },
         tabBarActiveTintColor: currentTheme.primary,
         tabBarInactiveTintColor: currentTheme.textSecondary,
@@ -141,6 +147,15 @@ export default function ProtectedLayout() {
         name="library-rental"
         options={{
           href: null, // Don't show in the tab bar
+        }}
+      />
+      <Tabs.Screen
+        name="pin-auth"
+        options={{
+          href: null,              // still hide the icon
+          tabBarStyle: {           // hide the entire tab bar container
+          display: 'none',
+          },
         }}
       />
     </Tabs>
