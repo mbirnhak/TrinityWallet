@@ -43,6 +43,7 @@ export default function Credentials() {
   const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
   
   interface StoredCredential {
+    id: string | number; // Add ID to uniquely identify each credential
     isAvailable: boolean;
     timestamp: string;
     data: string;
@@ -50,9 +51,9 @@ export default function Credentials() {
     expiration: string | null;
   }
   interface CredentialStore {
-    [key: string]: StoredCredential;
+    [key: string]: StoredCredential[]; // Changed to array of credentials per type
   }
-  const credentials: { [key: string]: StoredCredential } = {};
+  
   const [storedCredentials, setStoredCredentials] = useState<CredentialStore>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -76,11 +77,11 @@ export default function Credentials() {
   };
 
   // Render right swipe actions (delete button)
-  const renderRightActions = (type: string) => {
+  const renderRightActions = (type: string, credentialId: string | number) => {
     return (
       <TouchableOpacity
         style={[styles.deleteAction, { backgroundColor: theme.error }]}
-        onPress={() => confirmDeleteCredential(type)}
+        onPress={() => confirmDeleteCredential(type, credentialId)}
       >
         <Ionicons name="trash-outline" size={24} color="white" />
         <Text style={styles.deleteActionText}>Delete</Text>
@@ -131,7 +132,7 @@ export default function Credentials() {
       }
       
       // Process the credentials into a format for our cards
-      const credentials = {};
+      const credentialsMap: CredentialStore = {};
       
       // Group credentials by type
       for (const cred of credentialsFromDb) {
@@ -218,7 +219,9 @@ export default function Credentials() {
               ? new Date(Number(cred.iss_date) * 1000)
               : new Date();
             
-            credentials[credType] = {
+            // Create a credential object with ID
+            const credentialObj: StoredCredential = {
+              id: cred.id, // Store the database ID
               isAvailable: true,
               timestamp: date.toISOString(),
               data: cred.credential_string,
@@ -226,7 +229,15 @@ export default function Credentials() {
               expiration: cred.exp_date ? new Date(Number(cred.exp_date) * 1000).toISOString() : null
             };
             
-            console.log(`Found credential of type: ${credType}`);
+            // Initialize array for this type if it doesn't exist
+            if (!credentialsMap[credType]) {
+              credentialsMap[credType] = [];
+            }
+            
+            // Add this credential to the array for its type
+            credentialsMap[credType].push(credentialObj);
+            
+            console.log(`Found credential of type: ${credType} with ID: ${cred.id}`);
           } else {
             console.log("Unidentified credential type, skipping");
           }
@@ -235,8 +246,9 @@ export default function Credentials() {
         }
       }
       
-      console.log("Processed credentials:", Object.keys(credentials));
-      setStoredCredentials(credentials);
+      console.log("Processed credential types:", Object.keys(credentialsMap));
+      console.log("Total credentials found:", Object.values(credentialsMap).flat().length);
+      setStoredCredentials(credentialsMap);
     } catch (error) {
       console.error('Error fetching credentials:', error);
       setError('Failed to fetch credentials. Please try again.');
@@ -282,8 +294,8 @@ export default function Credentials() {
     }, [fetchCredentials])
   );
 
-  // Confirm credential deletion
-  const confirmDeleteCredential = (type) => {
+  // Confirm credential deletion with ID
+  const confirmDeleteCredential = (type: string, credentialId: string | number) => {
     // Close any open swipeable
     if (openSwipeable) {
       openSwipeable.close();
@@ -300,14 +312,14 @@ export default function Credentials() {
         { 
           text: 'Delete',
           style: 'destructive',
-          onPress: () => deleteCredential(type)
+          onPress: () => deleteCredential(type, credentialId)
         }
       ]
     );
   };
   
-  // Delete credential implementation
-  const deleteCredential = async (type) => {
+  // Delete credential implementation with ID
+  const deleteCredential = async (type: string, credentialId: string | number) => {
     setLoading(true);
     
     try {
@@ -318,13 +330,22 @@ export default function Credentials() {
       
       const storage = new CredentialStorage(dbEncryptionKey);
       
-      // Call the delete method
-      const success = await storage.deleteCredentialByType(type);
+      // Call the delete method with the ID
+      const success = await storage.deleteCredentialById(credentialId);
       
       if (success) {
         // Remove from local state
         const updatedCredentials = { ...storedCredentials };
-        delete updatedCredentials[type];
+        
+        if (updatedCredentials[type]) {
+          updatedCredentials[type] = updatedCredentials[type].filter(cred => cred.id !== credentialId);
+          
+          // If no credentials of this type left, remove the type entirely
+          if (updatedCredentials[type].length === 0) {
+            delete updatedCredentials[type];
+          }
+        }
+        
         setStoredCredentials(updatedCredentials);
         
         // Show success message
@@ -356,11 +377,14 @@ export default function Credentials() {
     }
   };
 
-  const viewCredentialDetails = (type) => {
+  // View credential details with ID
+  const viewCredentialDetails = (type: string, credentialId: string | number) => {
     try {
-      if (storedCredentials[type] && storedCredentials[type].isAvailable) {
-        const credential = storedCredentials[type];
-        
+      // Find the specific credential by type and ID
+      const credentialsOfType = storedCredentials[type] || [];
+      const credential = credentialsOfType.find(cred => cred.id === credentialId);
+      
+      if (credential && credential.isAvailable) {
         // Log credential view action
         logService.createLog({
           transaction_type: 'credential_presentation',
@@ -384,11 +408,7 @@ export default function Credentials() {
                 setClaimsModalVisible(true);
               } 
             },
-            { 
-              text: 'Delete', 
-              style: 'destructive',
-              onPress: () => confirmDeleteCredential(type)
-            },
+            // Removed the Delete option from here since it's now on the card
             { text: 'Close' }
           ]
         );
@@ -718,43 +738,48 @@ export default function Credentials() {
                       contentContainerStyle={styles.cardsContainer}
                       showsVerticalScrollIndicator={false}
                     >
-                      {/* Only show cards for available credentials */}
-                      {Object.keys(storedCredentials).map((type) => {
-                        const credential = storedCredentials[type];
-                        if (!credential || !credential.isAvailable) return null;
-                        
-                        return (
-                          <Animatable.View
-                            key={type}
-                            animation="fadeInUp"
-                            duration={600}
-                            delay={200}
-                          >
-                            <Swipeable
-                              renderRightActions={() => renderRightActions(type)}
-                              onSwipeableOpen={() => {
-                                const swipeable = swipeableRefs.current[type];
-                                if (swipeable) {
-                                  onSwipeableOpen(swipeable);
-                                }
-                              }}
-                              ref={(ref) => {
-                                if (ref) {
-                                  swipeableRefs.current[type] = ref;
-                                }
-                              }}
+                      {/* Use flatMap to render all credentials from all types */}
+                      {Object.entries(storedCredentials).flatMap(([type, credentials]) => 
+                        credentials.map((credential) => {
+                          if (!credential || !credential.isAvailable) return null;
+                          
+                          // Generate a unique key for this credential
+                          const credKey = `${type}-${credential.id}`;
+                          
+                          return (
+                            <Animatable.View
+                              key={credKey}
+                              animation="fadeInUp"
+                              duration={600}
+                              delay={200}
                             >
-                              <CredentialCard
-                                type={type}
-                                isAvailable={true}
-                                timestamp={credential.timestamp}
-                                onPress={() => viewCredentialDetails(type)}
-                                theme={theme}
-                              />
-                            </Swipeable>
-                          </Animatable.View>
-                        );
-                      })}
+                              <Swipeable
+                                renderRightActions={() => renderRightActions(type, credential.id)}
+                                onSwipeableOpen={() => {
+                                  const swipeable = swipeableRefs.current[credKey];
+                                  if (swipeable) {
+                                    onSwipeableOpen(swipeable);
+                                  }
+                                }}
+                                ref={(ref) => {
+                                  if (ref) {
+                                    swipeableRefs.current[credKey] = ref;
+                                  }
+                                }}
+                              >
+                                <CredentialCard
+                                  type={type}
+                                  isAvailable={true}
+                                  timestamp={credential.timestamp}
+                                  onPress={() => viewCredentialDetails(type, credential.id)}
+                                  onDelete={() => confirmDeleteCredential(type, credential.id)}
+                                  theme={theme}
+                                />
+                              </Swipeable>
+                            </Animatable.View>
+                          );
+                        })
+                      )}
                       
                       <View style={[styles.infoContainer, { backgroundColor: theme.darker }]}>
                         <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />

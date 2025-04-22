@@ -451,6 +451,53 @@ class AuthenticationService {
         });
     }
 
+    /**
+ * Verifies PIN without changing authentication state
+ * For operations that require PIN verification but shouldn't affect login state
+ */
+    async verifyPin(pin: string): Promise<boolean> {
+    try {
+      console.log('Attempting PIN verification');
+      // Check PIN against stored hash
+      const storedHash = await SecureStore.getItemAsync(storedValueKeys.PIN);
+      if (!storedHash) {
+        console.error('No PIN hash found');
+        await this.logService.createLog({
+          transaction_type: 'authentication',
+          status: 'failed',
+          details: 'No PIN hash found'
+        });
+        return false;
+      }
+      
+      const pinMatches = await bcryptVerifyHash(pin, storedHash);
+      
+      if (pinMatches) {
+        await this.logService.createLog({
+          transaction_type: 'authentication',
+          status: 'success',
+          details: 'Successfully authenticated with PIN'
+        });
+      } else {
+        await this.logService.createLog({
+          transaction_type: 'authentication',
+          status: 'failed',
+          details: 'PIN verification failed: incorrect PIN'
+        });
+      }
+      
+      return pinMatches;
+    } catch (error) {
+      console.error('PIN verification error:', error);
+      await this.logService.createLog({
+        transaction_type: 'authentication',
+        status: 'failed',
+        details: `PIN verification error: ${error instanceof Error ? error.message : String(error)}`
+      });
+      return false;
+    }
+  }
+
     // Logout and rest Authenticate with OpenIDC (need to re-auth with OpenIDC and confirm PIN)
     async deAuthorize(): Promise<void> {
         await SecureStore.deleteItemAsync('idToken');

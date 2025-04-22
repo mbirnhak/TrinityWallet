@@ -23,12 +23,12 @@ export default function PinAuth() {
   const { callback, selectedIds } = params;
   
   const { theme, isDarkMode } = useTheme();
-  const { signIn } = useAuth();
+  const { verifyPin } = useAuth(); // Use verifyPin instead of signIn
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [pinAttempts, setPinAttempts] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
-  const MAX_PIN_ATTEMPTS = 3;
+  const MAX_PIN_ATTEMPTS = 5; // Increased to 5 attempts
   const pinDisplayRef = useRef();
   
   // Initialize LogService
@@ -103,8 +103,8 @@ export default function PinAuth() {
         details: 'Attempting PIN authentication for credential request'
       });
       
-      // Use the existing authentication service from your app
-      const isValid = await signIn(inputPin);
+      // Use the verifyPin function instead of signIn to avoid affecting authentication state
+      const isValid = await verifyPin(inputPin);
       
       if (isValid) {
         // Log successful authentication
@@ -190,10 +190,13 @@ export default function PinAuth() {
         
         // Show error message based on attempts
         if (newAttempts >= MAX_PIN_ATTEMPTS) {
-          setPinError(`Too many failed attempts. Please try again later.`);
+          setPinError(`Too many failed attempts.`);
+          
+          // Wait a moment to show the error message, then return to request page
           setTimeout(() => {
+            // Go back to the request credentials page instead of redirecting to login
             router.back();
-          }, 2000);
+          }, 1500);
         } else {
           setPinError(`Incorrect PIN. ${MAX_PIN_ATTEMPTS - newAttempts} attempts remaining.`);
           setPin('');

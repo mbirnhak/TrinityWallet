@@ -14,6 +14,7 @@ interface AuthProps {
     hasEmailHash: () => Promise<boolean | null>;
     isLoading: boolean;
     setIsLoading: (value: boolean) => void;
+    verifyPin: (pin: string) => Promise<boolean>; // Added new function
 }
 
 const initialAuthState: AuthState = {
@@ -39,7 +40,8 @@ const AuthContext = createContext<AuthProps>({
     setForcePin: async (forcePin: boolean) => { },
     hasEmailHash: async () => false,
     isLoading: false,
-    setIsLoading: (value: boolean) => { }
+    setIsLoading: (value: boolean) => { },
+    verifyPin: async (pin: string) => false, // Added new function default
 })
 
 export function useAuth() {
@@ -116,6 +118,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
             return false;
         } finally {
             setIsLoading(false);
+        }
+    }
+
+    /**
+     * Verifies PIN without changing authentication state
+     * Used for operations like credential requests that need PIN verification
+     * but shouldn't log out the user on failure
+     */
+    const verifyPin = async (pin: string): Promise<boolean> => {
+        try {
+            const success = await auth.verifyPin(pin);
+            return success;
+        } catch (error) {
+            console.error('PIN verification failed with error:', error);
+            return false;
         }
     }
 
@@ -208,6 +225,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
                 hasEmailHash,
                 isLoading,
                 setIsLoading,
+                verifyPin, // Added new function to context
             }}>
             {children}
         </AuthContext.Provider>

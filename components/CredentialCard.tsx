@@ -65,7 +65,7 @@ const CARD_CONFIGS = {
   }
 };
 
-const CredentialCard = ({ type, isAvailable, timestamp, onPress, theme }) => {
+const CredentialCard = ({ type, isAvailable, timestamp, onPress, onDelete, theme }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const expandAnim = useRef(new Animated.Value(0)).current;
   
@@ -93,9 +93,13 @@ const CredentialCard = ({ type, isAvailable, timestamp, onPress, theme }) => {
     onPress && onPress();
   };
 
+  const handleDelete = () => {
+    onDelete && onDelete();
+  };
+
   const cardHeight = expandAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [220, 340]
+    outputRange: [220, 380] // Increased height to accommodate delete button
   });
 
   const cardScale = expandAnim.interpolate({
@@ -197,28 +201,58 @@ const CredentialCard = ({ type, isAvailable, timestamp, onPress, theme }) => {
                 </Text>
               </View>
 
-              <TouchableOpacity 
-                style={[
-                  styles.viewButton, 
-                  { 
-                    backgroundColor: type === 'iban' ? 
-                      theme.primary : // For light cards, use theme color
-                      'rgba(255, 255, 255, 0.2)' // For dark cards, use semi-transparent white
-                  }
-                ]}
-                onPress={handleViewDetails}
-              >
-                <Text style={[
-                  styles.viewButtonText, 
-                  { 
-                    color: type === 'iban' ? 
-                      '#FFFFFF' : 
-                      cardConfig.textColor 
-                  }
-                ]}>
-                  View Details
-                </Text>
-              </TouchableOpacity>
+              {/* Button container for View and Delete buttons */}
+              <View style={styles.buttonContainer}>
+                <TouchableOpacity 
+                  style={[
+                    styles.actionButton, 
+                    { 
+                      backgroundColor: type === 'iban' ? 
+                        theme.primary : // For light cards, use theme color
+                        'rgba(255, 255, 255, 0.2)' // For dark cards, use semi-transparent white
+                    }
+                  ]}
+                  onPress={handleViewDetails}
+                >
+                  <Ionicons name="eye-outline" size={18} color={type === 'iban' ? '#FFFFFF' : cardConfig.textColor} />
+                  <Text style={[
+                    styles.buttonText, 
+                    { 
+                      color: type === 'iban' ? 
+                        '#FFFFFF' : 
+                        cardConfig.textColor 
+                    }
+                  ]}>
+                    View Details
+                  </Text>
+                </TouchableOpacity>
+
+                {/* New Delete Button */}
+                <TouchableOpacity 
+                  style={[
+                    styles.actionButton, 
+                    styles.deleteButton,
+                    { 
+                      backgroundColor: type === 'iban' ? 
+                        theme.error : // For light cards, use theme color
+                        'rgba(255, 100, 100, 0.3)' // For dark cards, use semi-transparent red
+                    }
+                  ]}
+                  onPress={handleDelete}
+                >
+                  <Ionicons name="trash-outline" size={18} color={type === 'iban' ? '#FFFFFF' : cardConfig.textColor} />
+                  <Text style={[
+                    styles.buttonText, 
+                    { 
+                      color: type === 'iban' ? 
+                        '#FFFFFF' : 
+                        cardConfig.textColor 
+                    }
+                  ]}>
+                    Delete
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </Animatable.View>
           )}
           
@@ -303,15 +337,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Bold',
     fontSize: 16,
   },
-  viewButton: {
+  // New styles for button container and buttons
+  buttonContainer: {
     marginTop: 20,
+    flexDirection: 'column',
+    gap: 10,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: 12,
     borderRadius: 12,
-    alignItems: 'center',
   },
-  viewButtonText: {
+  deleteButton: {
+    // Specific styles for delete button
+  },
+  buttonText: {
     fontFamily: 'Poppins-Bold',
     fontSize: 16,
+    marginLeft: 8,
   },
   // Credit card embellishments
   cardChip: {

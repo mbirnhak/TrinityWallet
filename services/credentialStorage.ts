@@ -242,16 +242,17 @@ export class CredentialStorage {
             let vctPattern = null;
             
             // Map the short type back to VCT pattern for matching
+            // Updated patterns to match what's actually in the credentials
             const typeToVctMap = {
-                'pid': 'eu.europa.ec.eudi.pid',
-                'msisdn': 'eu.europa.ec.eudi.msisdn',
-                'ehic': 'eu.europa.ec.eudi.ehic',
-                'age_verification': 'eu.europa.ec.eudi.pseudonym_over18',
-                'iban': 'eu.europa.ec.eudi.iban',
-                'health_id': 'eu.europa.ec.eudi.hiid',
-                'tax': 'eu.europa.ec.eudi.tax',
-                'pda1': 'eu.europa.ec.eudi.pda1',
-                'por': 'eu.europa.ec.eudi.por'
+                'pid': 'pid',
+                'msisdn': 'msisdn',
+                'ehic': 'ehic',
+                'age_verification': 'pseudonym_age_over_18', // This was incorrect before
+                'iban': 'iban',
+                'health_id': 'hiid',
+                'tax': 'tax',
+                'pda1': 'pda1',
+                'por': 'por'
             };
             
             // Get the VCT pattern for the credential type
@@ -261,6 +262,8 @@ export class CredentialStorage {
                 throw new Error(`Unknown credential type: ${credentialType}`);
             }
             
+            console.log(`Looking for credential with pattern: ${vctPattern}`);
+            
             // Find the matching credential
             for (const credential of allCredentials || []) {
                 // Parse credential claims if they're a string
@@ -268,9 +271,21 @@ export class CredentialStorage {
                     ? JSON.parse(credential.credential_claims) 
                     : credential.credential_claims;
                 
-                // Check if VCT matches our pattern
+                // Debug log to see what's in the credential
+                console.log(`Checking credential with VCT: ${claims.vct || 'none'}`);
+                
+                // Check if VCT matches our pattern - try a more flexible match
                 const vct = claims.vct || '';
-                if (vct && vct.includes(vctPattern)) {
+                if (vct && vct.toLowerCase().includes(vctPattern.toLowerCase())) {
+                    console.log(`Found matching credential with ID: ${credential.id}`);
+                    credentialToDelete = credential;
+                    break;
+                }
+                
+                // Check for exact VCT match with URN format (added for age verification)
+                if (credentialType === 'age_verification' && 
+                    vct && vct.includes('urn:eu.europa.ec.eudi:pseudonym_age_over_18')) {
+                    console.log(`Found age verification credential with ID: ${credential.id}`);
                     credentialToDelete = credential;
                     break;
                 }
@@ -280,10 +295,21 @@ export class CredentialStorage {
                     const typeArray = Array.isArray(claims.vc._type) ? claims.vc._type : 
                                      (typeof claims.vc._type === 'string' ? [claims.vc._type] : []);
                     
-                    if (typeArray.some((t) => typeof t === 'string' && t.includes(vctPattern))) {
+                    if (typeArray.some((t) => typeof t === 'string' && 
+                        t.toLowerCase().includes(vctPattern.toLowerCase()))) {
+                        console.log(`Found credential via VC type with ID: ${credential.id}`);
                         credentialToDelete = credential;
                         break;
                     }
+                }
+                
+                // Additional check for 'over18' claim for age verification
+                if (credentialType === 'age_verification' && 
+                    (claims.over18 === true || claims.age_over_18 === true || 
+                    claims['18'] === true)) {
+                    console.log(`Found age verification credential by claim with ID: ${credential.id}`);
+                    credentialToDelete = credential;
+                    break;
                 }
             }
             
@@ -326,6 +352,62 @@ export class CredentialStorage {
                     transaction_type: 'credential_presentation',
                     status: 'failed',
                     details: `Error deleting credential: ${error instanceof Error ? error.message : String(error)}`
+                });
+            } catch (logError) {
+                console.error("Error logging credential deletion failure:", logError);
+            }
+            
+            return false;
+        }
+    }
+
+    async deleteCredentialById(credentialId: number | string) {
+        try {
+            // First retrieve the credential to get info for logging
+            const allCredentials = await this.retrieveCredentials();
+            
+            // Find the credential with the matching ID
+            const credentialToDelete = allCredentials?.find(cred => cred.id === credentialId);
+            
+            if (!credentialToDelete) {
+                throw new Error(`No credential found with ID: ${credentialId}`);
+            }
+            
+            // Get credential type and issuer for logging
+            const claims = typeof credentialToDelete.credential_claims === 'string' 
+                ? JSON.parse(credentialToDelete.credential_claims) 
+                : credentialToDelete.credential_claims;
+            
+            const issuer = claims.iss || 'Unknown Issuer';
+            
+            // Delete the credential from the database
+            await withDB(this.dbEncryptionKey, async (db) => {
+                return await db.delete(credentials)
+                    .where(eq(credentials.id, credentialId));
+            });
+            
+            // Log successful deletion
+            try {
+                await this.logService.createLog({
+                    transaction_type: 'credential_presentation',
+                    status: 'success',
+                    details: `Deleted credential with ID: ${credentialId}`,
+                    relying_party: issuer
+                });
+            } catch (error) {
+                console.error("Error logging credential deletion:", error);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error("Error deleting credential:", error);
+            
+            // Log the error
+            try {
+                await this.logService.createLog({
+                    transaction_type: 'credential_presentation',
+                    status: 'failed',
+                    details: `Error deleting credential by ID: ${error instanceof Error ? error.message : String(error)}`
                 });
             } catch (logError) {
                 console.error("Error logging credential deletion failure:", logError);
