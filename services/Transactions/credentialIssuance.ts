@@ -760,10 +760,6 @@ async function requestCredentialWithToken(
     });
 
     throw error;
-  } finally {
-    // Close the database connection here
-    storage.close();
-    console.log("[Step 6] Database connection closed, operations completed");
   }
 }
 
@@ -793,8 +789,6 @@ async function requestStudentCredential(username: string = 'mbirnhak') {
   } catch (error) {
     console.log("Error during issuance of student credential")
     return false;
-  } finally {
-    storage.close()
   }
 }
 

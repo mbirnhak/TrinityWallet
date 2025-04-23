@@ -151,8 +151,6 @@ async function trin_send_presentation(presentation_definition: Record<string, an
             relying_party: TRIN_LIB_SERVER_ID
         });
         return null;
-    } finally {
-        storage.close();
     }
 }
 
@@ -242,19 +240,15 @@ async function send_presentation(decoded_jwt: Record<string, unknown>) {
             if (formats.length === 0) {
                 formats = presentation_definition?.format as string[];
             }
-            // TODO: Search for credentials based on format in presentation definition.
             // Initialize db connection
             const dbEncryptionKey = await getDbEncryptionKey();
             const storage = new CredentialStorage(dbEncryptionKey);
-            try {
-                const match_by_format = await storage.retrieveCredentialByFormat(formats[0]);
-                matches = {
-                    credential_ids: match_by_format === null ? [] : match_by_format.map((c) => c.credential_id),
-                    requested_claims: []
-                }
-            } finally {
-                // Close the database connection
-                storage.close();
+            // TODO: Loop through formats until we find a match
+            // For now, just use the first format
+            const match_by_format = await storage.retrieveCredentialByFormat(formats[0]);
+            matches = {
+                credential_ids: match_by_format === null ? [] : match_by_format.map((c) => c.credential_id),
+                requested_claims: []
             }
         }
 
@@ -432,9 +426,6 @@ async function findMatchingCredentials(descriptor: Record<string, any>): Promise
             credential_ids: [],
             requested_claims: []
         };
-    } finally {
-        // Close the database connection
-        storage.close();
     }
 }
 
@@ -495,9 +486,6 @@ async function generatePresentation(credential_id: number, claims: string | stri
     } catch (error) {
         console.error("Error retrieving credential: ", error);
         return "";
-    } finally {
-        // Close the database connection
-        storage.close();
     }
 }
 

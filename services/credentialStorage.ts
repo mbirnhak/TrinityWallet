@@ -36,15 +36,10 @@ const withDB = async <T>(dbEncryptionKey: string, operation: (db: DrizzleDbType)
 export class CredentialStorage {
     private dbEncryptionKey: string;
     private logService: LogService;
-    private db;
-    private drizzleDb;
 
     constructor(dbEncryptionKey: string) {
         this.dbEncryptionKey = dbEncryptionKey;
         this.logService = LogService.getInstance();
-        this.db = SQLite.openDatabaseSync(constants.DBNAME);
-        this.db.execSync(`PRAGMA key = "x'${dbEncryptionKey}'"`);
-        this.drizzleDb = drizzle(this.db, { schema });
     }
 
     async storeCredential(credential_string: string, keyPair: { privateKey: object, publicKey: object }) {
@@ -237,16 +232,18 @@ export class CredentialStorage {
 
     async retrieveCredentialByJsonPathValue(jsonPath: string, expectedValue: any): Promise<string | null> {
         try {
-            // Query for credentials where the JSON path matches the expected value
-            const result = await this.drizzleDb
-                .select({
-                    credential_string: credentials.credential_string
-                })
-                .from(credentials)
-                .where(sql`json_extract(credential_claims, ${jsonPath}) = ${expectedValue}`);
+            // Use withDB instead of direct drizzleDb access
+            return await withDB(this.dbEncryptionKey, async (db) => {
+                const result = await db
+                    .select({
+                        credential_string: credentials.credential_string
+                    })
+                    .from(credentials)
+                    .where(sql`json_extract(credential_claims, ${jsonPath}) = ${expectedValue}`);
 
-            // Return the first matching credential ID, or null if none found
-            return result.length > 0 ? result[0].credential_string : null;
+                // Return the first matching credential string, or null if none found
+                return result.length > 0 ? result[0].credential_string : null;
+            });
         } catch (error) {
             console.log("Error retrieving credential: ", error);
             try {
@@ -264,13 +261,14 @@ export class CredentialStorage {
 
     async retrieveCredentialByFormat(credential_format: string) {
         try {
-            const retrievedCredentials = await this.drizzleDb
-                .select({
-                    credential_id: credentials.id
-                })
-                .from(credentials)
-                .where(eq(credentials.credential_format, credential_format));
-            return retrievedCredentials;
+            return await withDB(this.dbEncryptionKey, async (db) => {
+                return await db
+                    .select({
+                        credential_id: credentials.id
+                    })
+                    .from(credentials)
+                    .where(eq(credentials.credential_format, credential_format));
+            });
         } catch (error) {
             console.log("Error retrieving credentials: ", error);
             return null;
@@ -279,21 +277,21 @@ export class CredentialStorage {
 
     async retrieveCredentialById(credential_id: number, columns: (keyof typeof credentials)[] = []) {
         try {
-            // Set up the selection object conditionally
-            const selection = columns.length > 0
-                ? columns.reduce((acc, column) => {
-                    acc[column] = credentials[column];
-                    return acc;
-                }, {} as Record<string, any>)
-                : {};  // When undefined, select() will get all columns
+            return await withDB(this.dbEncryptionKey, async (db) => {
+                // Set up the selection object conditionally
+                const selection = columns.length > 0
+                    ? columns.reduce((acc, column) => {
+                        acc[column] = credentials[column];
+                        return acc;
+                    }, {} as Record<string, any>)
+                    : {};  // When empty, select() will get all columns
 
-            // Single query with conditional selection
-            const retrievedCredential = await this.drizzleDb
-                .select(selection)
-                .from(credentials)
-                .where(eq(credentials.id, credential_id));
-
-            return retrievedCredential;
+                // Query with conditional selection
+                return await db
+                    .select(selection)
+                    .from(credentials)
+                    .where(eq(credentials.id, credential_id));
+            });
         } catch (error) {
             console.log("Error retrieving credentials: ", error);
             return null;
@@ -302,7 +300,9 @@ export class CredentialStorage {
 
     async deleteAllCredentials() {
         try {
-            await this.drizzleDb.delete(credentials);
+            await withDB(this.dbEncryptionKey, async (db) => {
+                return await db.delete(credentials);
+            });
             return true;
         } catch (error) {
             console.log("Error deleting credentials: ", error);
@@ -312,7 +312,9 @@ export class CredentialStorage {
 
     async deleteCredentialByIdSimple(credential_id: number) {
         try {
-            await this.drizzleDb.delete(credentials).where(eq(credentials.id, credential_id));
+            await withDB(this.dbEncryptionKey, async (db) => {
+                return await db.delete(credentials).where(eq(credentials.id, credential_id));
+            });
             return true;
         } catch (error) {
             console.log("Error deleting credential: ", error);
@@ -322,9 +324,11 @@ export class CredentialStorage {
 
     async deleteCredentialsById(credential_ids: number[]) {
         try {
-            await this.drizzleDb.delete(credentials).where(
-                sql`${credentials.id} IN (${sql.join(credential_ids, ', ')})`
-            );
+            await withDB(this.dbEncryptionKey, async (db) => {
+                return await db.delete(credentials).where(
+                    sql`${credentials.id} IN (${sql.join(credential_ids, ', ')})`
+                );
+            });
             return true;
         } catch (error) {
             console.log("Error deleting credentials: ", error);
@@ -514,12 +518,6 @@ export class CredentialStorage {
             }
 
             return false;
-        }
-    }
-
-    public close(): void {
-        if (this.db) {
-            this.db.closeSync();
         }
     }
 }
