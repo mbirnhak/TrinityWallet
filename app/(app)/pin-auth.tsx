@@ -14,14 +14,14 @@ export default function PinAuth() {
   useEffect(() => {
     // This is the key to hiding the tab bar
     router.setParams({ hideTabBar: true });
-    
+
     return () => {
       router.setParams({ hideTabBar: false });
     };
   }, []);
   const params = useLocalSearchParams();
   const { callback, selectedIds } = params;
-  
+
   const { theme, isDarkMode } = useTheme();
   const { verifyPin } = useAuth(); // Use verifyPin instead of signIn
   const [pin, setPin] = useState('');
@@ -30,10 +30,10 @@ export default function PinAuth() {
   const [isProcessing, setIsProcessing] = useState(false);
   const MAX_PIN_ATTEMPTS = 5; // Increased to 5 attempts
   const pinDisplayRef = useRef();
-  
+
   // Initialize LogService
   const logService = LogService.getInstance();
-  
+
   useEffect(() => {
     const initLogService = async () => {
       try {
@@ -42,41 +42,41 @@ export default function PinAuth() {
         console.error('Error initializing LogService:', error);
       }
     };
-    
+
     initLogService();
-    
+
     return () => {
       logService.close();
     };
   }, []);
-  
+
   // Trigger shake animation when pin error changes
   useEffect(() => {
     if (pinError && pinDisplayRef.current) {
       pinDisplayRef.current.shake(500);
     }
   }, [pinError]);
-  
+
   // Handle PIN input
   const handlePinInput = useCallback((number) => {
     if (isProcessing) return;
-    
+
     setPin((currentPin) => {
       const newPin = currentPin + number;
-      
+
       // Automatically verify when PIN is complete
       if (newPin.length === 6) {
         setTimeout(() => validatePin(newPin), 200);
       }
-      
+
       return newPin;
     });
   }, [isProcessing]);
-  
+
   // Handle PIN delete
   const handlePinDelete = useCallback(() => {
     if (isProcessing) return;
-    
+
     setPin((currentPin) => {
       if (currentPin.length > 0) {
         return currentPin.slice(0, -1);
@@ -84,28 +84,28 @@ export default function PinAuth() {
       return currentPin;
     });
   }, [isProcessing]);
-  
+
   // Handle going back
   const handleGoBack = () => {
     if (isProcessing) return;
     router.back();
   };
-  
+
   // Validate PIN
   const validatePin = async (inputPin) => {
     try {
       setIsProcessing(true);
-      
+
       // Log PIN authentication attempt
       await logService.createLog({
         transaction_type: 'authentication',
         status: 'pending',
         details: 'Attempting PIN authentication for credential request'
       });
-      
+
       // Use the verifyPin function instead of signIn to avoid affecting authentication state
       const isValid = await verifyPin(inputPin);
-      
+
       if (isValid) {
         // Log successful authentication
         await logService.createLog({
@@ -113,15 +113,15 @@ export default function PinAuth() {
           status: 'success',
           details: 'PIN authentication successful for credential request'
         });
-        
+
         if (callback === 'request-credentials' && selectedIds) {
           try {
             // Parse the selected credential IDs
             const credentialIds = JSON.parse(selectedIds);
-            
+
             // Initialize LogService for this operation
             await logService.initialize();
-            
+
             // Log the credential request initiation
             await logService.createLog({
               transaction_type: 'credential_issuance',
@@ -129,32 +129,32 @@ export default function PinAuth() {
               details: `Requesting ${credentialIds.length} credential(s)`,
               relying_party: 'EU Issuer'
             });
-            
+
             // Pass the selected credential IDs to the request function
             const response = await requestCredential(credentialIds);
-            
+
             if (response === 'Error') {
               Alert.alert('Error', 'Failed to request credentials. Please try again later.');
               router.back();
               return;
             }
-            
+
             // Log success
             await logService.createLog({
               transaction_type: 'credential_issuance',
               status: 'success',
               details: `Successfully requested ${credentialIds.length} credential(s)`
             });
-            
+
             // Success alert
             Alert.alert(
-              'Success', 
+              'Success',
               'Your credential request has been submitted successfully',
               [{ text: 'OK', onPress: () => router.back() }]
             );
           } catch (error) {
             console.error('Error requesting credentials:', error);
-            
+
             // Try to log the error
             try {
               await logService.createLog({
@@ -166,7 +166,7 @@ export default function PinAuth() {
             } catch (logError) {
               console.error('Error logging credential request failure:', logError);
             }
-            
+
             Alert.alert(
               'Error',
               'Failed to request credentials. Please try again later.',
@@ -181,17 +181,17 @@ export default function PinAuth() {
         // Log failed authentication
         const newAttempts = pinAttempts + 1;
         setPinAttempts(newAttempts);
-        
+
         await logService.createLog({
           transaction_type: 'authentication',
           status: 'failed',
           details: `PIN authentication failed for credential request. Attempt ${newAttempts} of ${MAX_PIN_ATTEMPTS}`
         });
-        
+
         // Show error message based on attempts
         if (newAttempts >= MAX_PIN_ATTEMPTS) {
           setPinError(`Too many failed attempts.`);
-          
+
           // Wait a moment to show the error message, then return to request page
           setTimeout(() => {
             // Go back to the request credentials page instead of redirecting to login
@@ -204,21 +204,21 @@ export default function PinAuth() {
       }
     } catch (error) {
       console.error('PIN validation error:', error);
-      
+
       // Log error
       await logService.createLog({
         transaction_type: 'authentication',
         status: 'failed',
         details: `PIN validation error: ${error instanceof Error ? error.message : String(error)}`
       });
-      
+
       setPinError('An error occurred. Please try again.');
       setPin('');
     } finally {
       setIsProcessing(false);
     }
   };
-  
+
   // Pre-render keypad buttons to prevent re-renders
   const keypadButtons = Array(12).fill(0).map((_, index) => {
     let key;
@@ -226,7 +226,7 @@ export default function PinAuth() {
     else if (index === 10) key = 0;
     else if (index === 11) key = '⌫';
     else key = index + 1;
-    
+
     return (
       <TouchableOpacity
         key={index}
@@ -258,20 +258,20 @@ export default function PinAuth() {
       </TouchableOpacity>
     );
   });
-  
+
   return (
     <>
       <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={theme.dark} />
       <LinearGradient
-        colors={isDarkMode ? 
-          [theme.dark, theme.background] : 
+        colors={isDarkMode ?
+          [theme.dark, theme.background] :
           ['#F2F2F6', '#FFFFFF']
         }
         style={styles.container}
       >
         {/* Simple Header with Divider */}
         <View style={styles.headerContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.backButton}
             onPress={handleGoBack}
             disabled={isProcessing}
@@ -279,17 +279,17 @@ export default function PinAuth() {
             <Ionicons name="chevron-back" size={24} color={theme.text} />
           </TouchableOpacity>
           <Text style={[styles.headerText, { color: theme.text }]}>Authenticate</Text>
-          <View style={[styles.divider, { 
-            backgroundColor: isDarkMode ? 
-              'rgba(255, 255, 255, 0.2)' : 
-              'rgba(0, 0, 0, 0.1)' 
+          <View style={[styles.divider, {
+            backgroundColor: isDarkMode ?
+              'rgba(255, 255, 255, 0.2)' :
+              'rgba(0, 0, 0, 0.1)'
           }]} />
         </View>
 
         <View style={styles.content}>
           {/* PIN container section */}
           <View style={styles.pinContainer}>
-            <Animatable.View 
+            <Animatable.View
               ref={pinDisplayRef}
               style={styles.pinDisplayWrapper}
             >
@@ -308,14 +308,16 @@ export default function PinAuth() {
             </Animatable.View>
 
             {pinError ? (
-              <Animatable.Text 
+              <Animatable.Text
                 style={[styles.errorText, { color: '#FF3B30' }]}
                 animation="fadeIn"
                 duration={300}
               >
                 {pinError}
               </Animatable.Text>
-            ) : null}
+            ) : (
+              <View style={{ height: 51 }} />
+            )}
 
             <View style={styles.keypad}>
               {keypadButtons}
@@ -356,26 +358,23 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   // Updated PIN container styles for vertical stretching
   pinContainer: {
-    flex: 1,
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 40,
-    paddingBottom: 10,
+    justifyContent: 'center',
   },
   pinDisplayWrapper: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 10,
   },
   pinDisplay: {
     flexDirection: 'row',
-    marginBottom: 20,
+    marginBottom: 10,
   },
   pinDot: {
     width: 22,
@@ -389,10 +388,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Medium',
     fontSize: 15,
     textAlign: 'center',
-    marginTop: 16,
-    marginBottom: 16,
+    marginVertical: 16,
   },
-  
+
   // Keypad Styles - exactly matching login.tsx
   keypad: {
     flexDirection: 'row',
@@ -400,8 +398,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '95%',
     maxWidth: 360,
-    marginBottom: 30,
-    flex: 0.8,
+    marginTop: 20,
   },
   keypadButton: {
     width: '31%',
@@ -409,7 +406,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     margin: '1%',
-    marginVertical: '5%',
+    marginVertical: '4%',
     borderRadius: 45,
     borderWidth: 1,
   },

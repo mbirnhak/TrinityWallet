@@ -26,7 +26,7 @@ const CARD_CONFIGS = {
     gradientColors: ['#26A69A', '#00796B', '#004D40'],
     textColor: '#FFFFFF',
   },
-  age_verification: {
+  age_over: {
     title: 'Age Verification',
     icon: 'shield-checkmark-outline',
     gradientColors: ['#9C27B0', '#6A1B9A', '#4A148C'],

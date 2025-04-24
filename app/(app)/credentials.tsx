@@ -12,24 +12,16 @@ import LogService from '@/services/LogService';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 
 // Map of credential types with their VCT identifiers
-const CREDENTIAL_TYPES = {
-  'eu.europa.ec.eudi.pid_jwt_vc_json': 'pid',
-  'eu.europa.ec.eudi.msisdn_sd_jwt_vc': 'msisdn',
-  'eu.europa.ec.eudi.ehic_sd_jwt_vc': 'ehic',
-  'eu.europa.ec.eudi.pseudonym_over18_sd_jwt_vc': 'age_verification',
-  'eu.europa.ec.eudi.iban_sd_jwt_vc': 'iban',
-  'eu.europa.ec.eudi.hiid_sd_jwt_vc': 'health_id',
-  'eu.europa.ec.eudi.tax_sd_jwt_vc': 'tax',
-  'eu.europa.ec.eudi.pda1_sd_jwt_vc': 'pda1',
-  'eu.europa.ec.eudi.por_sd_jwt_vc': 'por'
-};
+const CREDENTIAL_TYPES = [
+  'pid', 'msisdn', 'ehic', 'age_over', 'iban', 'health_id', 'tax', 'pda1', 'por'
+];
 
 // Human-readable names for credential types
 const CREDENTIAL_NAMES = {
   'pid': 'Personal ID',
   'msisdn': 'Mobile Number',
   'ehic': 'Health Insurance Card',
-  'age_verification': 'Age Verification',
+  'age_over': 'Age Verification',
   'iban': 'Bank Account',
   'health_id': 'Health ID',
   'tax': 'Tax ID',
@@ -153,40 +145,12 @@ export default function Credentials() {
           let credType = null;
 
           // First try to match by VCT in claims
-          for (const [typeId, shortType] of Object.entries(CREDENTIAL_TYPES)) {
+          for (const shortType of CREDENTIAL_TYPES) {
             // Match by exact VCT or if the typeId is included in any vct field
-            if (typeId === vct || (vct && vct.includes(typeId))) {
+            if (vct && vct.includes(shortType)) {
               credType = shortType;
               break;
             }
-          }
-
-          // If not found, check in VC type array or other claim fields
-          if (!credType && claims.vc) {
-            // Check if vc contains a _type array
-            const typeArray = Array.isArray(claims.vc._type) ? claims.vc._type :
-              (typeof claims.vc._type === 'string' ? [claims.vc._type] : []);
-
-            for (const [typeId, shortType] of Object.entries(CREDENTIAL_TYPES)) {
-              // Explicit type guard for string array element
-              if (typeArray.some((t: string | unknown): boolean =>
-                Boolean(t && typeof t === 'string' && t.includes(typeId))
-              )) {
-                credType = shortType;
-                break;
-              }
-            }
-          }
-
-          // If still not found, try more specific claims that might indicate credential type
-          if (!credType) {
-            if (claims.family_name || claims.given_name) credType = 'pid';
-            else if (claims.msisdn || claims.phoneNumber) credType = 'msisdn';
-            else if (claims.ehic_number || claims.healthInsurance) credType = 'ehic';
-            else if (claims.over18 || claims.ageOver18) credType = 'age_verification';
-            else if (claims.iban || claims.bankAccount) credType = 'iban';
-            else if (claims.health_id_number || claims.healthId) credType = 'health_id';
-            else if (claims.tax_id || claims.taxNumber) credType = 'tax';
           }
 
           // Use a fallback if no specific type was detected but we have a credential

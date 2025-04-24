@@ -21,7 +21,7 @@ export default function PinLogin() {
     const [isTransitioning, setIsTransitioning] = useState(false);
     const MAX_ATTEMPTS = 5;
     const lottieRef = useRef<LottieView>(null);
-    
+
     // Initialize LogService
     const logService = LogService.getInstance();
 
@@ -31,7 +31,7 @@ export default function PinLogin() {
                 // Check if biometrics are available and allowed
                 const biometricStatus = await biometricAvailability();
                 console.log('Biometric status:', biometricStatus);
-                
+
                 // Only set to use biometrics if they're available and not forced to use PIN
                 if (biometricStatus && biometricStatus.isAvailable && !authState.forcePin) {
                     setUseBiometrics(true);
@@ -45,7 +45,7 @@ export default function PinLogin() {
         };
 
         checkForcePin();
-        
+
         // Initialize LogService
         const initLogService = async () => {
             try {
@@ -54,9 +54,9 @@ export default function PinLogin() {
                 console.error('Error initializing LogService:', error);
             }
         };
-        
+
         initLogService();
-        
+
         // Cleanup function
         return () => {
             logService.close();
@@ -85,7 +85,7 @@ export default function PinLogin() {
             if (biometricStatus && biometricStatus.isAvailable) {
                 const success = await signIn(null);
                 console.log('Biometric auth result:', success);
-                
+
                 if (success) {
                     // Log successful authentication
                     await logService.createLog({
@@ -93,18 +93,18 @@ export default function PinLogin() {
                         status: 'success',
                         details: `Successfully authenticated with biometrics (${biometricStatus.biometricType})`
                     });
-                    
+
                     router.replace('/home');
                 } else {
                     setIsScanning(false);
-                    
+
                     // Log failed authentication
                     await logService.createLog({
                         transaction_type: 'authentication',
                         status: 'failed',
                         details: 'Biometric authentication failed'
                     });
-                    
+
                     Alert.alert(
                         'Authentication Failed',
                         'Please try again or use your PIN.',
@@ -113,14 +113,14 @@ export default function PinLogin() {
                 }
             } else {
                 setIsScanning(false);
-                
+
                 // Log biometric unavailability
                 await logService.createLog({
                     transaction_type: 'authentication',
                     status: 'failed',
                     details: 'Biometrics unavailable on device'
                 });
-                
+
                 Alert.alert(
                     'Biometrics Unavailable',
                     'Please enable biometrics in your device settings.',
@@ -136,7 +136,7 @@ export default function PinLogin() {
         } catch (error) {
             console.error('Biometric authentication error:', error);
             setIsScanning(false);
-            
+
             // Log error
             await logService.createLog({
                 transaction_type: 'authentication',
@@ -170,7 +170,7 @@ export default function PinLogin() {
                 status: 'pending',
                 details: 'Attempting PIN authentication'
             });
-            
+
             const isValid = await signIn(inputPin);
             if (isValid) {
                 // Log successful authentication
@@ -179,19 +179,19 @@ export default function PinLogin() {
                     status: 'success',
                     details: 'Successfully authenticated with PIN'
                 });
-                
+
                 router.replace('/home');
             } else {
                 setAttempts(prev => {
                     const updatedAttempts = prev + 1;
-                    
+
                     // Log failed authentication attempt
                     logService.createLog({
                         transaction_type: 'authentication',
                         status: 'failed',
                         details: `PIN authentication failed. Attempt ${updatedAttempts} of ${MAX_ATTEMPTS}`
                     });
-                    
+
                     if (updatedAttempts >= MAX_ATTEMPTS) {
                         handleMaxAttemptsReached();
                     } else {
@@ -206,14 +206,14 @@ export default function PinLogin() {
             }
         } catch (error) {
             console.error('PIN validation error:', error);
-            
+
             // Log error
             await logService.createLog({
                 transaction_type: 'authentication',
                 status: 'failed',
                 details: `PIN validation error: ${error instanceof Error ? error.message : String(error)}`
             });
-            
+
             Alert.alert('Error', 'Failed to verify PIN');
             setPin('');
         }
@@ -226,7 +226,7 @@ export default function PinLogin() {
             status: 'failed',
             details: `Account locked after ${MAX_ATTEMPTS} failed PIN attempts`
         });
-        
+
         await unRegister();
         Alert.alert(
             'Account Locked',
@@ -243,7 +243,7 @@ export default function PinLogin() {
     // Smooth transition between PIN and biometrics
     const toggleAuthMethod = (useBio: boolean | ((prevState: boolean) => boolean)) => {
         setIsTransitioning(true);
-        
+
         // Use Animatable.View's ref to trigger animations
         setTimeout(() => {
             setUseBiometrics(useBio);
@@ -257,23 +257,23 @@ export default function PinLogin() {
         <>
             <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={theme.dark} />
             <LinearGradient
-                colors={isDarkMode ? 
-                    [theme.dark, theme.background] : 
+                colors={isDarkMode ?
+                    [theme.dark, theme.background] :
                     ['#F2F2F6', '#FFFFFF']
                 }
                 style={styles.container}
             >
                 {/* Simple Login Header with Divider */}
-                <Animatable.View 
-                    animation="fadeInDown" 
+                <Animatable.View
+                    animation="fadeInDown"
                     duration={800}
                     style={styles.headerContainer}
                 >
                     <Text style={[styles.headerText, { color: theme.text }]}>Login</Text>
-                    <View style={[styles.divider, { 
-                        backgroundColor: isDarkMode ? 
-                            'rgba(255, 255, 255, 0.2)' : 
-                            'rgba(0, 0, 0, 0.1)' 
+                    <View style={[styles.divider, {
+                        backgroundColor: isDarkMode ?
+                            'rgba(255, 255, 255, 0.2)' :
+                            'rgba(0, 0, 0, 0.1)'
                     }]} />
                 </Animatable.View>
 
@@ -295,7 +295,7 @@ export default function PinLogin() {
                                         start={{ x: 0, y: 0 }}
                                         end={{ x: 1, y: 1 }}
                                     />
-                                    
+
                                     <LottieView
                                         ref={lottieRef}
                                         source={require('../assets/fonts/face-id.json')}
@@ -304,7 +304,7 @@ export default function PinLogin() {
                                         loop={isScanning}
                                         speed={0.7} // Slightly slower for smoother appearance
                                     />
-                                    
+
                                     {isScanning && (
                                         <View style={styles.scanOverlay}>
                                             <LinearGradient
@@ -319,7 +319,7 @@ export default function PinLogin() {
                                     )}
                                 </View>
                             </TouchableOpacity>
-                            
+
                             {/* Descriptive text that changes based on state */}
                             <Text style={[styles.authStatusText, { color: theme.text }]}>
                                 {isScanning ? 'Scanning face...' : 'Tap to use Face ID'}
@@ -373,7 +373,7 @@ export default function PinLogin() {
                             </View>
                         </View>
                     )}
-                    
+
                     {/* Fixed position button container at the bottom */}
                     <View style={styles.buttonContainer}>
                         {useBiometrics ? (
@@ -528,8 +528,8 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         width: '95%',
         maxWidth: 360,
-        marginBottom: 30, // Increased bottom margin
-        flex: 0.8, // Give it a flex value to allow stretching
+        marginBottom: 15, // Increased bottom margin
+        marginTop: 30, // Give it a flex value to allow stretching
     },
     keypadButton: {
         width: '31%',
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         margin: '1%',
-        marginVertical: '5%', // Increased vertical margin for more spacing between rows
+        marginVertical: '4%', // Increased vertical margin for more spacing between rows
         borderRadius: 45,
         borderWidth: 1,
     },
@@ -560,7 +560,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         height: 80,
-        marginTop: 10, // Add top margin
+        marginTop: 5, // Add top margin
+        marginBottom: 20, // Add bottom margin
     },
     switchButtonContainer: {
         width: 220,
