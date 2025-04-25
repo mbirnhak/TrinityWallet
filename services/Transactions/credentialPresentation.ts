@@ -9,6 +9,7 @@ import { Validator } from 'jsonschema';
 import * as jose from 'jose'
 import * as Linking from "expo-linking";
 import { JWK, CryptoKey } from 'react-native-quick-crypto/lib/typescript/src/keys';
+import { Alert } from 'react-native';
 
 const TRIN_LIB_SERVER_ID = 'lib-verification-service-123';
 
@@ -62,7 +63,8 @@ export async function retrieve_authorization_request(request_uri: string, client
                 details: 'Processing internal library server request',
                 relying_party: TRIN_LIB_SERVER_ID
             });
-            trin_send_presentation(await response.json());
+            const status = await trin_send_presentation(await response.json());
+            return status;
         }
 
         const encoded_jwt = await response.text();
@@ -104,6 +106,7 @@ async function trin_send_presentation(presentation_definition: Record<string, an
         const credential_string = await storage.retrieveCredentialByJsonPathValue('$.vct', 'trin.coll.student_id_sd_jwt_vc')
         if (credential_string == null) {
             console.log("No matching student credential");
+            Alert.alert("No matching student credential", "Please make sure you have a student credential in your wallet.");
             return false;
         }
         const sdJwt = await createSdJwt();
@@ -141,7 +144,6 @@ async function trin_send_presentation(presentation_definition: Record<string, an
             console.log('Verification failed:', data.message);
             return false;
         }
-        return true;
     } catch (error) {
         console.error('[Presentation] Error with internal presentation:', error);
         await logService.createLog({
