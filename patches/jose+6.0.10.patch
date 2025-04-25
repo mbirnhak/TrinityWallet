@@ -1,0 +1,85 @@
+diff --git a/node_modules/jose/dist/webapi/lib/encrypt.js b/node_modules/jose/dist/webapi/lib/encrypt.js
+index b0e96a7..82e7a28 100644
+--- a/node_modules/jose/dist/webapi/lib/encrypt.js
++++ b/node_modules/jose/dist/webapi/lib/encrypt.js
+@@ -12,16 +12,25 @@ async function cbcEncrypt(enc, plaintext, cek, iv, aad) {
+     }
+     const keySize = parseInt(enc.slice(1, 4), 10);
+     const encKey = await crypto.subtle.importKey('raw', cek.subarray(keySize >> 3), 'AES-CBC', false, ['encrypt']);
+-    const macKey = await crypto.subtle.importKey('raw', cek.subarray(0, keySize >> 3), {
+-        hash: `SHA-${keySize << 1}`,
+-        name: 'HMAC',
+-    }, false, ['sign']);
++    // const macKey = await crypto.subtle.importKey('raw', cek.subarray(0, keySize >> 3), {
++    //     hash: `SHA-${keySize << 1}`,
++    //     name: 'HMAC',
++    // }, false, ['sign']);
++    // const tag = new Uint8Array((await crypto.subtle.sign('HMAC', macKey, macData)).slice(0, keySize >> 3));
++
++    // THe createHmac function takes a Uint8Array as the key, not a CryptoKey
++    // And the subtle.sign function is not implemented in QuickCrypto for HMAC yet
++    const macKey = cek.subarray(0, keySize >> 3);
++    const hash = `sha${keySize << 1}`;
+     const ciphertext = new Uint8Array(await crypto.subtle.encrypt({
+         iv,
+         name: 'AES-CBC',
+     }, encKey, plaintext));
+     const macData = concat(aad, iv, ciphertext, uint64be(aad.length << 3));
+-    const tag = new Uint8Array((await crypto.subtle.sign('HMAC', macKey, macData)).slice(0, keySize >> 3));
++    const tag = new Uint8Array((crypto.createHmac(hash, macKey)
++        .update(macData)
++        .digest())
++        .slice(0, keySize >> 3));
+     return { ciphertext, tag, iv };
+ }
+ async function gcmEncrypt(enc, plaintext, cek, iv, aad) {
+diff --git a/node_modules/jose/dist/webapi/lib/encrypt_key_management.js b/node_modules/jose/dist/webapi/lib/encrypt_key_management.js
+index def432d..7b19726 100644
+--- a/node_modules/jose/dist/webapi/lib/encrypt_key_management.js
++++ b/node_modules/jose/dist/webapi/lib/encrypt_key_management.js
+@@ -35,10 +35,13 @@ export default async (alg, enc, key, providedCek, providedParameters = {}) => {
+                 ephemeralKey = (await crypto.subtle.generateKey(key.algorithm, true, ['deriveBits'])).privateKey;
+             }
+             const { x, y, crv, kty } = await exportJWK(ephemeralKey);
++            // Remove trailing '.' from x and y which is added by React Native Quick Crypto
++            const x_clean = x.replace(/\.$/, '');
++            const y_clean = y.replace(/\.$/, '');
+             const sharedSecret = await ecdhes.deriveKey(key, ephemeralKey, alg === 'ECDH-ES' ? enc : alg, alg === 'ECDH-ES' ? cekLength(enc) : parseInt(alg.slice(-5, -2), 10), apu, apv);
+-            parameters = { epk: { x, crv, kty } };
++            parameters = { epk: { x: x_clean, crv, kty } };
+             if (kty === 'EC')
+-                parameters.epk.y = y;
++                parameters.epk.y = y_clean;
+             if (apu)
+                 parameters.apu = b64u(apu);
+             if (apv)
+diff --git a/node_modules/jose/dist/webapi/lib/is_key_like.js b/node_modules/jose/dist/webapi/lib/is_key_like.js
+index d9ff4f2..45dec63 100644
+--- a/node_modules/jose/dist/webapi/lib/is_key_like.js
++++ b/node_modules/jose/dist/webapi/lib/is_key_like.js
+@@ -4,7 +4,24 @@ export function assertCryptoKey(key) {
+     }
+ }
+ export function isCryptoKey(key) {
+-    return key?.[Symbol.toStringTag] === 'CryptoKey';
++    // Check for JOSE CryptoKey (standard Web Crypto API)
++    if (key?.[Symbol.toStringTag] === 'CryptoKey') {
++        return true;
++    }
++
++    // Check for React Native Quick Crypto CryptoKey
++    // RN Quick Crypto CryptoKey has different characteristics
++    if (key && typeof key === 'object') {
++        // React Native Quick Crypto CryptoKey typically has these properties
++        if ('type' in key && 'extractable' in key && 'algorithm' in key && 'usages' in key) {
++            // Additional check for RN Quick Crypto specific implementation
++            if (key.constructor?.name === 'CryptoKey' || key.hasOwnProperty('_handle')) {
++                return true;
++            }
++        }
++    }
++
++    return false;
+ }
+ export function isKeyObject(key) {
+     return key?.[Symbol.toStringTag] === 'KeyObject';

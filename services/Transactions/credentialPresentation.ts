@@ -492,18 +492,22 @@ async function generatePresentation(credential_id: number, claims: string | stri
 }
 
 async function generatePresentationBody(response_mode: string, state: string, presentation_submission: PresentationSubmission, vp_token: string | string[], client_metadata: Record<string, unknown>, nonce: string) {
-    const presentation_data = new URLSearchParams({
+    const presentation_data = {
         state: state,
-        vp_token: Array.isArray(vp_token) ? JSON.stringify(vp_token) : vp_token,
-        presentation_submission: JSON.stringify(presentation_submission)
-    })
-    console.log("Presentation data: ", presentation_data.toString());
+        vp_token: vp_token,
+        presentation_submission: presentation_submission
+    }
+    console.log("Presentation data: ", presentation_data);
     console.log("Response mode: ", response_mode);
     if (response_mode === "direct_post") {
-        return presentation_data.toString();
+        const presentation_data_direct = new URLSearchParams({
+            state: state,
+            vp_token: Array.isArray(vp_token) ? JSON.stringify(vp_token) : vp_token,
+            presentation_submission: JSON.stringify(presentation_submission)
+        });
+        return presentation_data_direct.toString();
     } else if (response_mode === "direct_post.jwt") {
         try {
-            const nonce_encoded = base64url.encode(nonce);
             const alg = client_metadata.authorization_encrypted_response_alg as string;
             const enc = client_metadata.authorization_encrypted_response_enc as string;
             let jwks = client_metadata.jwks as Record<"keys", any>;
@@ -512,24 +516,17 @@ async function generatePresentationBody(response_mode: string, state: string, pr
                 const jwks_response = await fetch(jwks_uri);
                 jwks = await jwks_response.json();
             }
-            console.log("VERIFIER PUB KEYS JSON: ", jwks)
             const key = jwks.keys[0] as JWK;
-            console.log("Before import key");
             const importedKey = await jose.importJWK(key, alg) as CryptoKey;
-            console.log("After import key");
-            // Object.defineProperty(importedKey, Symbol.toStringTag, {
-            //     value: 'CryptoKey',
-            //     configurable: false,  // Prevent further modification
-            //     writable: false,      // Make it read-only
-            //     enumerable: false
-            // });
 
-            const presentationDataUint8Array = new TextEncoder().encode(presentation_data.toString());
+            const nonce_bytes = new TextEncoder().encode(nonce);
+            const presentationDataUint8Array = new TextEncoder().encode(JSON.stringify(presentation_data));
             // Create a JWE with the presentation data as the payload
             const jwe = await new jose.CompactEncrypt(presentationDataUint8Array)
-                .setProtectedHeader({ alg: alg, enc: enc, apv: nonce_encoded })
+                .setKeyManagementParameters({ apv: nonce_bytes })
+                .setProtectedHeader({ alg: alg, enc: enc })
                 .encrypt(importedKey)
-
+                
             console.log("JWE: ", jwe);
             const jwe_encoded_presentation = new URLSearchParams({
                 state: state,
