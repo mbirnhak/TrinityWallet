@@ -20,5 +20,5 @@ export enum constants {
     ISSUER_URL = 'https://issuer.eudiw.dev',
     EU_ISSUER_CLIENT_ID = 'ID',
     DBNAME = 'trinwallet_database.db',
-    TRIN_ISSUER_URL = ''
+    TRIN_ISSUER_URL = 'https://trinity-wallet-server.vercel.app/'
 }
