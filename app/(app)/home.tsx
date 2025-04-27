@@ -227,12 +227,12 @@ export default function Dashboard() {
               <ActionButton
                 icon="key"
                 title="Request Credentials"
-                onPress={() => navigateTo('/request-credentials')}
+                onPress={() => router.navigate('/(app)/request-credentials')}
               />
               <ActionButton
                 icon="id-card"
                 title="Present Credentials"
-                onPress={() => navigateTo('/present-credentials')}
+                onPress={() => router.navigate('/(app)/present-credentials')}
                 color="#5E5CE6" // Apple's purple
               />
               <ActionButton

@@ -1,7 +1,7 @@
 import { Redirect, Tabs, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import LottieView from 'lottie-react-native';
 import * as Font from 'expo-font';
 import { useEffect } from "react";
@@ -75,8 +75,8 @@ export default function ProtectedLayout() {
           backgroundColor: currentTheme.dark,
           borderTopWidth: 0.5,
           borderTopColor: currentTheme.border,
-          height: 60,
-          paddingBottom: 8,
+          height: Platform.OS === 'ios' ? 84 : 68, // Increased height for better spacing
+          paddingBottom: Platform.OS === 'ios' ? 28 : 12, // Account for iPhone home indicator
           paddingTop: 8,
           // Hide the tab bar when hideTabBar is true
           display: hideTabBar ? 'none' : 'flex',
@@ -85,7 +85,15 @@ export default function ProtectedLayout() {
         tabBarInactiveTintColor: currentTheme.textSecondary,
         tabBarLabelStyle: {
           fontFamily: 'Poppins-Medium',
-          fontSize: 12,
+          fontSize: 11, // Slightly smaller font size
+          marginTop: -4, // Adjust label position
+          paddingBottom: 4, // Add padding at the bottom
+        },
+        tabBarIconStyle: {
+          marginTop: 4, // Adjust icon position
+        },
+        tabBarItemStyle: {
+          paddingVertical: 4, // Add vertical padding to items
         }
       }}
     >
@@ -93,9 +101,19 @@ export default function ProtectedLayout() {
         name="home"
         options={{
           title: "Dashboard",
-          tabBarLabel: "Dashboard",
+          tabBarLabel: "Home",  // Changed to shorter "Home" label
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size} color={color} />
+            <Ionicons name="home" size={size-2} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="request-credentials"
+        options={{
+          title: "Request",
+          tabBarLabel: "Request",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="key" size={size-2} color={color} />
           ),
         }}
       />
@@ -103,9 +121,19 @@ export default function ProtectedLayout() {
         name="credentials"
         options={{
           title: "Credentials",
-          tabBarLabel: "Credentials",
+          tabBarLabel: "Wallet",  // Changed to shorter "Wallet" label
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="wallet" size={size} color={color} />
+            <Ionicons name="wallet" size={size-2} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="present-credentials"
+        options={{
+          title: "Present",
+          tabBarLabel: "Present",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="id-card" size={size-2} color={color} />
           ),
         }}
       />
@@ -115,24 +143,12 @@ export default function ProtectedLayout() {
           title: "Profile",
           tabBarLabel: "Profile",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
+            <Ionicons name="person" size={size-2} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="logs"
-        options={{
-          href: null, // Don't show in the tab bar
-        }}
-      />
-      <Tabs.Screen
-        name="request-credentials"
-        options={{
-          href: null, // Don't show in the tab bar
-        }}
-      />
-      <Tabs.Screen
-        name="present-credentials"
         options={{
           href: null, // Don't show in the tab bar
         }}

@@ -26,7 +26,7 @@ const CARD_CONFIGS = {
     gradientColors: ['#26A69A', '#00796B', '#004D40'],
     textColor: '#FFFFFF',
   },
-  age_over: {
+  age_verification: {
     title: 'Age Verification',
     icon: 'shield-checkmark-outline',
     gradientColors: ['#9C27B0', '#6A1B9A', '#4A148C'],
@@ -203,51 +203,42 @@ const CredentialCard = ({ type, isAvailable, timestamp, onPress, onDelete, theme
 
               {/* Button container for View and Delete buttons */}
               <View style={styles.buttonContainer}>
+                {/* View Details Button - Now with consistent primary blue styling */}
                 <TouchableOpacity 
                   style={[
                     styles.actionButton, 
                     { 
-                      backgroundColor: type === 'iban' ? 
-                        theme.primary : // For light cards, use theme color
-                        'rgba(255, 255, 255, 0.2)' // For dark cards, use semi-transparent white
+                      backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                      borderWidth: 1,
+                      borderColor: cardConfig.textColor === '#FFFFFF' ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.2)'
                     }
                   ]}
                   onPress={handleViewDetails}
                 >
-                  <Ionicons name="eye-outline" size={18} color={type === 'iban' ? '#FFFFFF' : cardConfig.textColor} />
+                  <Ionicons name="eye-outline" size={18} color={cardConfig.textColor} />
                   <Text style={[
                     styles.buttonText, 
-                    { 
-                      color: type === 'iban' ? 
-                        '#FFFFFF' : 
-                        cardConfig.textColor 
-                    }
+                    { color: cardConfig.textColor }
                   ]}>
                     View Details
                   </Text>
                 </TouchableOpacity>
 
-                {/* New Delete Button */}
+                {/* Delete Button - Now consistently red across all card types */}
                 <TouchableOpacity 
                   style={[
                     styles.actionButton, 
                     styles.deleteButton,
                     { 
-                      backgroundColor: type === 'iban' ? 
-                        theme.error : // For light cards, use theme color
-                        'rgba(255, 100, 100, 0.3)' // For dark cards, use semi-transparent red
+                      backgroundColor: 'rgba(255, 59, 48, 0.9)' // Using a standard red color
                     }
                   ]}
                   onPress={handleDelete}
                 >
-                  <Ionicons name="trash-outline" size={18} color={type === 'iban' ? '#FFFFFF' : cardConfig.textColor} />
+                  <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
                   <Text style={[
                     styles.buttonText, 
-                    { 
-                      color: type === 'iban' ? 
-                        '#FFFFFF' : 
-                        cardConfig.textColor 
-                    }
+                    { color: '#FFFFFF' }
                   ]}>
                     Delete
                   </Text>
@@ -337,7 +328,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Bold',
     fontSize: 16,
   },
-  // New styles for button container and buttons
+  // Improved button container and buttons
   buttonContainer: {
     marginTop: 20,
     flexDirection: 'column',

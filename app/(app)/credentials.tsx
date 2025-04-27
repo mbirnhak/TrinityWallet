@@ -13,7 +13,7 @@ import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler'
 
 // Map of credential types with their VCT identifiers
 const CREDENTIAL_TYPES = [
-  'pid', 'msisdn', 'ehic', 'age_over', 'iban', 'health_id', 'tax', 'pda1', 'por'
+  'pid', 'msisdn', 'ehic', 'age_over', 'iban','health_id', 'tax', 'pda1', 'por'
 ];
 
 // Human-readable names for credential types
@@ -33,7 +33,7 @@ export default function Credentials() {
   const { theme, isDarkMode } = useTheme();
   const [openSwipeable, setOpenSwipeable] = useState<Swipeable | null>(null);
   const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({});
-
+  
   interface StoredCredential {
     id: string | number; // Add ID to uniquely identify each credential
     isAvailable: boolean;
@@ -45,21 +45,21 @@ export default function Credentials() {
   interface CredentialStore {
     [key: string]: StoredCredential[]; // Changed to array of credentials per type
   }
-
+  
   const [storedCredentials, setStoredCredentials] = useState<CredentialStore>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedCardId, setExpandedCardId] = useState(null);
   const logService = LogService.getInstance();
-
+  
   // State for the claims modal
   const [claimsModalVisible, setClaimsModalVisible] = useState(false);
   const [selectedCredential, setSelectedCredential] = useState<StoredCredential | null>(null);
   const [selectedCredentialType, setSelectedCredentialType] = useState(null);
-
+  
   // State to keep track of expanded nested objects
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
-
+  
   // Toggle expansion of a nested object
   const toggleExpand = (path: string) => {
     setExpandedPaths(prev => ({
@@ -88,44 +88,44 @@ export default function Credentials() {
     }
     setOpenSwipeable(swipeable);
   };
-
+  
   const fetchCredentials = useCallback(async () => {
     let storage = null;
-
+    
     try {
       setLoading(true);
       setError(null);
-
+      
       console.log("Fetching credentials...");
-
+      
       // Initialize credential storage
       const dbEncryptionKey = await getDbEncryptionKey();
       if (!dbEncryptionKey) {
         throw new Error("Failed to retrieve database encryption key");
       }
-
+      
       storage = new CredentialStorage(dbEncryptionKey);
-
+      
       // Fetch all credentials from database
       const credentialsFromDb = await storage.retrieveCredentials();
       console.log("Retrieved credentials:", credentialsFromDb ? credentialsFromDb.length : 0);
-
+      
       // Log credential fetch attempt
       await logService.createLog({
         transaction_type: 'credential_presentation',
         status: credentialsFromDb && credentialsFromDb.length > 0 ? 'success' : 'pending',
         details: `Retrieved ${credentialsFromDb ? credentialsFromDb.length : 0} credentials`
       });
-
+      
       if (!credentialsFromDb || credentialsFromDb.length === 0) {
         setStoredCredentials({});
         setLoading(false);
         return;
       }
-
+      
       // Process the credentials into a format for our cards
       const credentialsMap: CredentialStore = {};
-
+      
       // Group credentials by type
       for (const cred of credentialsFromDb) {
         try {
@@ -133,33 +133,45 @@ export default function Credentials() {
             console.log("Skipping invalid credential entry");
             continue;
           }
-
+          
           // Try to determine credential type from the VCT or other fields
-          const claims = typeof cred.credential_claims === 'string'
-            ? JSON.parse(cred.credential_claims)
+          const claims = typeof cred.credential_claims === 'string' 
+            ? JSON.parse(cred.credential_claims) 
             : cred.credential_claims;
-
+            
           const vct = claims.vct || '';
-
+          
           // Find the proper credential type
           let credType = null;
-
+          
           // First try to match by VCT in claims
           for (const shortType of CREDENTIAL_TYPES) {
+            console.log("shortType:", shortType);
             // Match by exact VCT or if the typeId is included in any vct field
             if (vct && vct.includes(shortType)) {
               credType = shortType;
               break;
             }
           }
-
+          
+          // If still not found, try more specific claims that might indicate credential type
+          if (!credType) {
+            if (claims.family_name || claims.given_name) credType = 'pid';
+            else if (claims.msisdn || claims.phoneNumber) credType = 'msisdn';
+            else if (claims.ehic_number || claims.healthInsurance) credType = 'ehic';
+            else if (claims.over18 || claims.ageOver18) credType = 'age_over';
+            else if (claims.iban || claims.bankAccount) credType = 'iban';
+            else if (claims.health_id_number || claims.healthId) credType = 'health_id';
+            else if (claims.tax_id || claims.taxNumber) credType = 'tax';
+          }
+          
           // Use a fallback if no specific type was detected but we have a credential
           if (!credType && Object.keys(claims).length > 0) {
             console.log("Unidentified credential type, using fallback");
-
+            
             // Try to determine type from claim keys
             const claimKeys = Object.keys(claims).join(' ').toLowerCase();
-
+            
             if (claimKeys.includes('person') || claimKeys.includes('name')) {
               credType = 'pid';
             } else if (claimKeys.includes('phone') || claimKeys.includes('mobile')) {
@@ -167,7 +179,7 @@ export default function Credentials() {
             } else if (claimKeys.includes('health') || claimKeys.includes('insurance')) {
               credType = 'ehic';
             } else if (claimKeys.includes('age') || claimKeys.includes('adult')) {
-              credType = 'age_verification';
+              credType = 'age_over';
             } else if (claimKeys.includes('bank') || claimKeys.includes('account')) {
               credType = 'iban';
             } else if (claimKeys.includes('tax')) {
@@ -177,12 +189,12 @@ export default function Credentials() {
               credType = 'pid'; // Default to personal ID if nothing else matches
             }
           }
-
+          
           if (credType) {
             const date = cred.iss_date
               ? new Date(Number(cred.iss_date) * 1000)
               : new Date();
-
+            
             // Create a credential object with ID
             const credentialObj: StoredCredential = {
               id: cred.id, // Store the database ID
@@ -192,15 +204,15 @@ export default function Credentials() {
               claims: claims,
               expiration: cred.exp_date ? new Date(Number(cred.exp_date) * 1000).toISOString() : null
             };
-
+            
             // Initialize array for this type if it doesn't exist
             if (!credentialsMap[credType]) {
               credentialsMap[credType] = [];
             }
-
+            
             // Add this credential to the array for its type
             credentialsMap[credType].push(credentialObj);
-
+            
             console.log(`Found credential of type: ${credType} with ID: ${cred.id}`);
           } else {
             console.log("Unidentified credential type, skipping");
@@ -209,14 +221,14 @@ export default function Credentials() {
           console.error("Error parsing credential:", parseError);
         }
       }
-
+      
       console.log("Processed credential types:", Object.keys(credentialsMap));
       console.log("Total credentials found:", Object.values(credentialsMap).flat().length);
       setStoredCredentials(credentialsMap);
     } catch (error) {
       console.error('Error fetching credentials:', error);
       setError('Failed to fetch credentials. Please try again.');
-
+      
       // Log the error
       try {
         await logService.createLog({
@@ -227,13 +239,20 @@ export default function Credentials() {
       } catch (logError) {
         console.error("Error logging credential fetch failure:", logError);
       }
-
+      
       Alert.alert(
         'Error',
         'Failed to fetch credentials. Please try again.',
         [{ text: 'OK' }]
       );
     } finally {
+      if (storage) {
+        try {
+          storage.close();
+        } catch (closeError) {
+          console.error("Error closing storage:", closeError);
+        }
+      }
       setLoading(false);
     }
   }, []);
@@ -242,15 +261,7 @@ export default function Credentials() {
   useEffect(() => {
     fetchCredentials();
   }, [fetchCredentials]);
-
-  // Refresh credentials when the screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      fetchCredentials();
-      return () => { }; // cleanup function
-    }, [fetchCredentials])
-  );
-
+  
   // Confirm credential deletion with ID
   const confirmDeleteCredential = (type: string, credentialId: string | number) => {
     // Close any open swipeable
@@ -258,15 +269,15 @@ export default function Credentials() {
       openSwipeable.close();
       setOpenSwipeable(null);
     }
-
+    
     const credName = CREDENTIAL_NAMES[type] || type.toUpperCase().replace('_', ' ');
-
+    
     Alert.alert(
       'Delete Credential',
       `Are you sure you want to delete your ${credName} credential? This action cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
+        { 
           text: 'Delete',
           style: 'destructive',
           onPress: () => deleteCredential(type, credentialId)
@@ -274,37 +285,37 @@ export default function Credentials() {
       ]
     );
   };
-
+  
   // Delete credential implementation with ID
   const deleteCredential = async (type: string, credentialId: string | number) => {
     setLoading(true);
-
+    
     try {
       const dbEncryptionKey = await getDbEncryptionKey();
       if (!dbEncryptionKey) {
         throw new Error("Failed to retrieve database encryption key");
       }
-
+      
       const storage = new CredentialStorage(dbEncryptionKey);
-
+      
       // Call the delete method with the ID
       const success = await storage.deleteCredentialById(credentialId);
-
+      
       if (success) {
         // Remove from local state
         const updatedCredentials = { ...storedCredentials };
-
+        
         if (updatedCredentials[type]) {
           updatedCredentials[type] = updatedCredentials[type].filter(cred => cred.id !== credentialId);
-
+          
           // If no credentials of this type left, remove the type entirely
           if (updatedCredentials[type].length === 0) {
             delete updatedCredentials[type];
           }
         }
-
+        
         setStoredCredentials(updatedCredentials);
-
+        
         // Show success message
         Alert.alert(
           'Success',
@@ -316,14 +327,14 @@ export default function Credentials() {
       }
     } catch (error) {
       console.error('Error deleting credential:', error);
-
+      
       // Log the error
       logService.createLog({
         transaction_type: 'error',
         status: 'failed',
         details: `Error deleting credential: ${error instanceof Error ? error.message : String(error)}`
       }).catch(err => console.error("Error logging credential deletion failure:", err));
-
+      
       Alert.alert(
         'Error',
         'Failed to delete credential. Please try again.',
@@ -335,64 +346,52 @@ export default function Credentials() {
   };
 
   // View credential details with ID
-  const viewCredentialDetails = (type: string, credentialId: string | number) => {
-    try {
-      // Find the specific credential by type and ID
-      const credentialsOfType = storedCredentials[type] || [];
-      const credential = credentialsOfType.find(cred => cred.id === credentialId);
-
-      if (credential && credential.isAvailable) {
-        // Log credential view action
-        logService.createLog({
-          transaction_type: 'credential_presentation',
-          status: 'success',
-          details: `Viewed credential details for ${CREDENTIAL_NAMES[type] || type}`
-        }).catch(err => console.error("Error logging credential view:", err));
-
-        // Get a readable name for the credential type
-        const credName = CREDENTIAL_NAMES[type] || type.toUpperCase().replace('_', ' ');
-
-        Alert.alert(
-          `${credName}`,
-          `Issued: ${new Date(credential.timestamp).toLocaleDateString()}\n${credential.expiration ? `Expires: ${new Date(credential.expiration).toLocaleDateString()}` : ''}\n`,
-          [
-            {
-              text: 'View Claims',
-              onPress: () => {
-                // Set the selected credential for the modal
-                setSelectedCredential(credential);
-                setSelectedCredentialType(type);
-                setClaimsModalVisible(true);
-              }
-            },
-            // Removed the Delete option from here since it's now on the card
-            { text: 'Close' }
-          ]
-        );
-      } else {
-        Alert.alert(
-          'No Credential',
-          `No ${CREDENTIAL_NAMES[type] || type.toUpperCase()} credential found.`,
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
-      console.error('Error viewing credential:', error);
-
-      // Log the error
+  // View credential details with ID
+const viewCredentialDetails = (type: string, credentialId: string | number) => {
+  try {
+    // Find the specific credential by type and ID
+    const credentialsOfType = storedCredentials[type] || [];
+    const credential = credentialsOfType.find(cred => cred.id === credentialId);
+    
+    if (credential && credential.isAvailable) {
+      // Log credential view action
       logService.createLog({
-        transaction_type: 'error',
-        status: 'failed',
-        details: `Error viewing credential details: ${error instanceof Error ? error.message : String(error)}`
-      }).catch(err => console.error("Error logging credential view failure:", err));
-
+        transaction_type: 'credential_presentation',
+        status: 'success',
+        details: `Viewed credential details for ${CREDENTIAL_NAMES[type] || type}`
+      }).catch(err => console.error("Error logging credential view:", err));
+      
+      // Get a readable name for the credential type
+      const credName = CREDENTIAL_NAMES[type] || type.toUpperCase().replace('_', ' ');
+      
+      // CHANGE THIS SECTION - Instead of showing alert, directly open the claims modal
+      setSelectedCredential(credential);
+      setSelectedCredentialType(type);
+      setClaimsModalVisible(true);
+    } else {
       Alert.alert(
-        'Error',
-        'Failed to view credential details. Please try again.',
+        'No Credential',
+        `No ${CREDENTIAL_NAMES[type] || type.toUpperCase()} credential found.`,
         [{ text: 'OK' }]
       );
     }
-  };
+  } catch (error) {
+    console.error('Error viewing credential:', error);
+    
+    // Log the error
+    logService.createLog({
+      transaction_type: 'error',
+      status: 'failed',
+      details: `Error viewing credential details: ${error instanceof Error ? error.message : String(error)}`
+    }).catch(err => console.error("Error logging credential view failure:", err));
+    
+    Alert.alert(
+      'Error',
+      'Failed to view credential details. Please try again.',
+      [{ text: 'OK' }]
+    );
+  }
+};
 
   const handleRefresh = () => {
     setLoading(true);
@@ -401,17 +400,17 @@ export default function Credentials() {
 
   // Determine if we have any credentials to show
   const hasCredentials = Object.keys(storedCredentials).length > 0;
-
+  
   // Helper function to render the claims items in a user-friendly format
   const renderClaimItem = (key, value, index, path = '') => {
     const currentPath = path ? `${path}.${key}` : key;
     const isExpanded = expandedPaths[currentPath];
-
+    
     // Handle complex objects or arrays
     if (typeof value === 'object' && value !== null) {
       return (
         <View key={index}>
-          <TouchableOpacity
+          <TouchableOpacity 
             style={[styles.claimNestedItem, { backgroundColor: theme.card }]}
             onPress={() => toggleExpand(currentPath)}
           >
@@ -420,14 +419,14 @@ export default function Credentials() {
               <Text style={[styles.claimNestedValue, { color: theme.textSecondary }]}>
                 {Array.isArray(value) ? `Array (${value.length})` : 'Object'}
               </Text>
-              <Ionicons
-                name={isExpanded ? "chevron-down" : "chevron-forward"}
-                size={16}
-                color={theme.textSecondary}
+              <Ionicons 
+                name={isExpanded ? "chevron-down" : "chevron-forward"} 
+                size={16} 
+                color={theme.textSecondary} 
               />
             </View>
           </TouchableOpacity>
-
+          
           {isExpanded && (
             <View style={[styles.nestedContent, { borderLeftColor: theme.primary }]}>
               {Array.isArray(value) ? (
@@ -440,7 +439,7 @@ export default function Credentials() {
                         <Text style={[styles.arrayItemIndex, { color: theme.primary }]}>
                           Item {arrayIndex + 1}
                         </Text>
-                        {Object.entries(item).map(([itemKey, itemValue], itemIndex) =>
+                        {Object.entries(item).map(([itemKey, itemValue], itemIndex) => 
                           renderClaimItem(itemKey, itemValue, `${currentPath}-${arrayIndex}-${itemIndex}`, `${currentPath}[${arrayIndex}]`)
                         )}
                       </View>
@@ -459,7 +458,7 @@ export default function Credentials() {
                 ))
               ) : (
                 // Render object properties
-                Object.entries(value).map(([subKey, subValue], subIndex) =>
+                Object.entries(value).map(([subKey, subValue], subIndex) => 
                   renderClaimItem(subKey, subValue, `${currentPath}-${subIndex}`, currentPath)
                 )
               )}
@@ -468,7 +467,7 @@ export default function Credentials() {
         </View>
       );
     }
-
+    
     // For simple values, display directly
     return (
       <View key={index} style={[styles.claimItem, { backgroundColor: theme.card }]}>
@@ -479,7 +478,7 @@ export default function Credentials() {
       </View>
     );
   };
-
+  
   // Format a claim key to make it more readable
   const formatClaimKey = (key) => {
     // Special case formatting for common credential fields
@@ -492,8 +491,7 @@ export default function Credentials() {
       'status': 'Status',
       'place_of_birth': 'Place of Birth',
       'nationalities': 'Nationalities',
-      'age_over_18': 'Age Over 18',
-      'over18': 'Over 18',
+      'age_over': 'Age Over 18',
       'tax_id': 'Tax ID',
       'birthdate': 'Date of Birth',
       'gender': 'Gender',
@@ -502,12 +500,12 @@ export default function Credentials() {
       'pda1_number': 'Driver\'s License',
       'por_address': 'Address'
     };
-
+    
     // Use special format if available
     if (specialFormats[key]) {
       return specialFormats[key];
     }
-
+    
     // Convert snake_case or camelCase to Title Case with spaces
     return key
       .replace(/_/g, ' ')
@@ -515,14 +513,14 @@ export default function Credentials() {
       .replace(/^\w/, c => c.toUpperCase()) // Capitalize first letter
       .trim();
   };
-
+  
   // Format a claim value to make it more readable
   const formatClaimValue = (value) => {
     if (value === null || value === undefined) return 'N/A';
-
+    
     // Boolean values
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-
+    
     // Date strings
     if (typeof value === 'string') {
       // Check for ISO date format
@@ -536,7 +534,7 @@ export default function Credentials() {
           // If date parsing fails, continue to other formats
         }
       }
-
+      
       // Check for timestamp (seconds)
       if (/^\d{10}$/.test(value)) {
         try {
@@ -548,7 +546,7 @@ export default function Credentials() {
           // If timestamp parsing fails, continue
         }
       }
-
+      
       // Check for timestamp (milliseconds)
       if (/^\d{13}$/.test(value)) {
         try {
@@ -561,10 +559,10 @@ export default function Credentials() {
         }
       }
     }
-
+    
     return String(value);
   };
-
+  
   // Organize claims into categories for better display
   interface ClaimItem {
     key: string;
@@ -580,7 +578,7 @@ export default function Credentials() {
     place_of_birth?: string;
     nationalities?: string | string[];
     gender?: string;
-    age_over_18?: boolean;
+    age_over?: boolean;
     over18?: boolean;
     msisdn?: string;
     phone_number?: string;
@@ -602,40 +600,40 @@ export default function Credentials() {
 
   const organizeClaimsForDisplay = (claims: Claims | null): ClaimItem[] => {
     if (!claims) return [];
-
+    
     const displayItems: ClaimItem[] = [];
-
+    
     // First add common important fields that should appear at the top
     const priorityFields: Array<keyof Claims> = [
       'given_name', 'family_name', 'birthdate', 'place_of_birth',
-      'nationalities', 'gender', 'age_over_18', 'over18',
+      'nationalities', 'gender', 'age_over', 'over18',
       'msisdn', 'phone_number', 'phoneNumber',
       'iban', 'account_number', 'bankAccount',
       'tax_id', 'taxNumber'
     ];
-
+    
     // First pass: Add priority fields in order
     priorityFields.forEach(field => {
       if (field in claims) {
-        displayItems.push({
-          key: field,
-          value: claims[field],
-          index: `priority-${field}`
+        displayItems.push({ 
+          key: field, 
+          value: claims[field], 
+          index: `priority-${field}` 
         });
       }
     });
-
+    
     // Second pass: Add remaining fields
     Object.entries(claims).forEach(([key, value], index) => {
       // Skip fields that are already added or should be hidden
-      if (priorityFields.includes(key as keyof Claims) ||
-        ['vct', 'vc', '_sd', '_sd_alg', 'iss', 'exp', 'iat', 'jti'].includes(key)) {
+      if (priorityFields.includes(key as keyof Claims) || 
+          ['vct', 'vc', '_sd', '_sd_alg', 'iss', 'exp', 'iat', 'jti'].includes(key)) {
         return;
       }
-
+      
       displayItems.push({ key, value, index });
     });
-
+    
     return displayItems;
   };
 
@@ -643,13 +641,13 @@ export default function Credentials() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.dark }]}>
         <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={theme.dark} />
-
+        
         <View style={[styles.container, { backgroundColor: theme.dark }]}>
           <CommonHeader title="Digital Credentials" />
-
-          <Animatable.View
-            animation="fadeIn"
-            duration={1000}
+          
+          <Animatable.View 
+            animation="fadeIn" 
+            duration={1000} 
             style={styles.contentContainer}
           >
             {loading ? (
@@ -661,8 +659,8 @@ export default function Credentials() {
               <View style={styles.errorContainer}>
                 <Ionicons name="alert-circle-outline" size={48} color={theme.error} />
                 <Text style={[styles.errorText, { color: theme.error }]}>{error}</Text>
-                <TouchableOpacity
-                  style={[styles.retryButton, { backgroundColor: theme.primary }]}
+                <TouchableOpacity 
+                  style={[styles.retryButton, { backgroundColor: theme.primary }]} 
                   onPress={handleRefresh}
                 >
                   <Text style={[styles.retryButtonText, { color: theme.text }]}>Retry</Text>
@@ -679,7 +677,7 @@ export default function Credentials() {
                     <Ionicons name="refresh-outline" size={20} color={theme.primary} />
                   </TouchableOpacity>
                 </View>
-
+                
                 {hasCredentials ? (
                   <>
                     {/* Swipe instruction banner */}
@@ -689,20 +687,20 @@ export default function Credentials() {
                         Swipe left on a credential to delete it
                       </Text>
                     </View>
-
-                    <ScrollView
+                  
+                    <ScrollView 
                       style={styles.cardsScrollView}
                       contentContainerStyle={styles.cardsContainer}
                       showsVerticalScrollIndicator={false}
                     >
                       {/* Use flatMap to render all credentials from all types */}
-                      {Object.entries(storedCredentials).flatMap(([type, credentials]) =>
+                      {Object.entries(storedCredentials).flatMap(([type, credentials]) => 
                         credentials.map((credential) => {
                           if (!credential || !credential.isAvailable) return null;
-
+                          
                           // Generate a unique key for this credential
                           const credKey = `${type}-${credential.id}`;
-
+                          
                           return (
                             <Animatable.View
                               key={credKey}
@@ -737,7 +735,7 @@ export default function Credentials() {
                           );
                         })
                       )}
-
+                      
                       <View style={[styles.infoContainer, { backgroundColor: theme.darker }]}>
                         <Ionicons name="information-circle-outline" size={20} color={theme.textSecondary} />
                         <Text style={[styles.infoText, { color: theme.textSecondary }]}>
@@ -773,7 +771,7 @@ export default function Credentials() {
             )}
           </Animatable.View>
         </View>
-
+        
         {/* Claims Viewing Modal */}
         <Modal
           animationType="slide"
@@ -785,8 +783,8 @@ export default function Credentials() {
           }}
         >
           <View style={styles.modalContainer}>
-            <Animatable.View
-              animation="fadeInUp"
+            <Animatable.View 
+              animation="fadeInUp" 
               duration={300}
               style={[styles.modalContent, { backgroundColor: theme.dark }]}
             >
@@ -804,9 +802,9 @@ export default function Credentials() {
                   <Ionicons name="close" size={24} color={theme.text} />
                 </TouchableOpacity>
               </View>
-
+              
               {selectedCredential && (
-                <ScrollView
+                <ScrollView 
                   style={styles.claimsScrollView}
                   contentContainerStyle={styles.claimsContainer}
                   showsVerticalScrollIndicator={true}
@@ -821,7 +819,7 @@ export default function Credentials() {
                           {selectedCredentialType && CREDENTIAL_NAMES[selectedCredentialType] || 'Unknown'}
                         </Text>
                       </View>
-
+                      
                       <View style={styles.metadataRow}>
                         <Ionicons name="calendar-outline" size={18} color={theme.primary} />
                         <Text style={[styles.metadataLabel, { color: theme.textSecondary }]}>Issued:</Text>
@@ -829,7 +827,7 @@ export default function Credentials() {
                           {new Date(selectedCredential.timestamp).toLocaleDateString()}
                         </Text>
                       </View>
-
+                      
                       {selectedCredential.expiration && (
                         <View style={styles.metadataRow}>
                           <Ionicons name="time-outline" size={18} color={theme.primary} />
@@ -841,15 +839,15 @@ export default function Credentials() {
                       )}
                     </View>
                   </View>
-
+                  
                   {/* Claims section */}
                   <View style={styles.sectionHeaderContainer}>
                     <Text style={[styles.sectionTitle, { color: theme.text }]}>
                       Credential Information
                     </Text>
-
+                    
                     {Object.keys(expandedPaths).length > 0 && (
-                      <TouchableOpacity
+                      <TouchableOpacity 
                         style={styles.collapseAllButton}
                         onPress={() => setExpandedPaths({})}
                       >
@@ -859,11 +857,11 @@ export default function Credentials() {
                       </TouchableOpacity>
                     )}
                   </View>
-
-                  {organizeClaimsForDisplay(selectedCredential.claims).map(({ key, value, index }) =>
+                  
+                  {organizeClaimsForDisplay(selectedCredential.claims).map(({ key, value, index }) => 
                     renderClaimItem(key, value, index)
                   )}
-
+                  
                   {/* Empty state for no claims */}
                   {organizeClaimsForDisplay(selectedCredential.claims).length === 0 && (
                     <View style={[styles.emptyClaimsContainer, { backgroundColor: theme.darker }]}>
@@ -875,7 +873,7 @@ export default function Credentials() {
                   )}
                 </ScrollView>
               )}
-
+              
               <TouchableOpacity
                 style={[styles.closeModalButton, { backgroundColor: theme.primary }]}
                 onPress={() => {
@@ -1053,7 +1051,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Medium',
     fontSize: 14,
   },
-
+  
   // Modal styles
   modalContainer: {
     flex: 1,
@@ -1095,7 +1093,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Medium',
     fontSize: 16,
   },
-
+  
   // Claims styles
   claimsScrollView: {
     flex: 1,
@@ -1172,7 +1170,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
-
+  
   // Nested content styles
   nestedContent: {
     paddingLeft: 16,
