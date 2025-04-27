@@ -129,21 +129,28 @@ async function trin_send_presentation(presentation_definition: Record<string, an
             throw new Error(`HTTP error! Status: ${response.status}`);
         }
         const data = await response.json();
+        let status;
         if (data.status === 'success') {
-            // Extract the redirect_url from the response
-            const redirectUrl = data.redirect_url;
-            await Linking.openURL(redirectUrl);
             await logService.createLog({
                 transaction_type: 'credential_presentation',
                 status: 'success',
                 details: 'Internal presentation completed',
                 relying_party: TRIN_LIB_SERVER_ID
             });
-            return true;
+            status = true;
         } else {
             console.log('Verification failed:', data.message);
-            return false;
+            await logService.createLog({
+                transaction_type: 'credential_presentation',
+                status: 'failed',
+                details: 'Internal presentation comlpleted with error: ' + data.message,
+                relying_party: TRIN_LIB_SERVER_ID
+            });
+            status = false;
         }
+        const redirectUrl = data.redirect_url;
+        await Linking.openURL(redirectUrl);
+        return status;
     } catch (error) {
         console.error('[Presentation] Error with internal presentation:', error);
         await logService.createLog({
@@ -526,7 +533,7 @@ async function generatePresentationBody(response_mode: string, state: string, pr
                 .setKeyManagementParameters({ apv: nonce_bytes })
                 .setProtectedHeader({ alg: alg, enc: enc })
                 .encrypt(importedKey)
-                
+
             console.log("JWE: ", jwe);
             const jwe_encoded_presentation = new URLSearchParams({
                 state: state,
