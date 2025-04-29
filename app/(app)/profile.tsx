@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     View, 
     Text, 
@@ -10,7 +10,9 @@ import {
     SafeAreaView,
     StatusBar,
     Platform,
-    Switch
+    Switch,
+    TextInput,
+    Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
@@ -19,12 +21,39 @@ import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { Animated } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function Profile() {
     const { signOut } = useAuth();
     const { theme, isDarkMode, toggleTheme } = useTheme();
     const [showHelpModal, setShowHelpModal] = useState(false);
     const [showAboutModal, setShowAboutModal] = useState(false);
+    const [showEditNameModal, setShowEditNameModal] = useState(false);
+    const [userName, setUserName] = useState('Shivanshu Dwivedi');
+    const [newName, setNewName] = useState('');
+    const [profileImage, setProfileImage] = useState(null);
+
+    // Load saved name and profile image when component mounts
+    useEffect(() => {
+        const loadProfileData = async () => {
+            try {
+                const savedName = await AsyncStorage.getItem('user_name');
+                if (savedName) {
+                    setUserName(savedName);
+                }
+                
+                const savedImage = await AsyncStorage.getItem('profile_image');
+                if (savedImage) {
+                    setProfileImage(savedImage);
+                }
+            } catch (error) {
+                console.error('Error loading profile data:', error);
+            }
+        };
+        
+        loadProfileData();
+    }, []);
 
     const handleSignOut = async () => {
         try {
@@ -39,8 +68,54 @@ function Profile() {
         }
     };
 
-    const navigateToESign = () => {
-        router.push('/e-sign');
+    const handleEditName = () => {
+        setNewName(userName);
+        setShowEditNameModal(true);
+    };
+
+    const handleSaveName = async () => {
+        if (newName.trim()) {
+            setUserName(newName.trim());
+            setShowEditNameModal(false);
+            
+            // Save to AsyncStorage
+            try {
+                await AsyncStorage.setItem('user_name', newName.trim());
+            } catch (error) {
+                console.error('Error saving name:', error);
+            }
+        } else {
+            Alert.alert('Invalid Name', 'Please enter a valid name.');
+        }
+    };
+
+    const handlePickImage = async () => {
+        // Request permission to access photos
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        
+        if (status !== 'granted') {
+            Alert.alert('Permission Required', 'Please allow access to your photo library to change your profile picture.');
+            return;
+        }
+        
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+        });
+        
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            const selectedAsset = result.assets[0];
+            setProfileImage(selectedAsset.uri);
+            
+            // Save to AsyncStorage
+            try {
+                await AsyncStorage.setItem('profile_image', selectedAsset.uri);
+            } catch (error) {
+                console.error('Error saving profile image:', error);
+            }
+        }
     };
 
     return (
@@ -63,16 +138,36 @@ function Profile() {
                         colors={[`${theme.primary}10`, 'transparent']}
                         style={styles.profileHeader}
                     >
-                        <View style={styles.avatarContainer}>
+                        <TouchableOpacity 
+                            style={styles.avatarContainer}
+                            onPress={handlePickImage}
+                        >
                             <LinearGradient
                                 colors={[theme.primary, theme.primaryDark]}
                                 style={[styles.avatarGradient, { borderColor: theme.border }]}
                             >
-                                <Ionicons name="person" size={60} color={theme.text} />
+                                {profileImage ? (
+                                    <Image 
+                                        source={{ uri: profileImage }} 
+                                        style={styles.profileImage} 
+                                    />
+                                ) : (
+                                    <Ionicons name="person" size={60} color={theme.text} />
+                                )}
+                                <View style={styles.cameraIconContainer}>
+                                    <Ionicons name="camera" size={18} color={theme.text} />
+                                </View>
                             </LinearGradient>
+                        </TouchableOpacity>
+                        <View style={styles.nameContainer}>
+                            <Text style={[styles.userName, { color: theme.text }]}>{userName}</Text>
+                            <TouchableOpacity 
+                                style={styles.editNameButton}
+                                onPress={handleEditName}
+                            >
+                                <Ionicons name="pencil" size={18} color={theme.primary} />
+                            </TouchableOpacity>
                         </View>
-                        <Text style={[styles.userName, { color: theme.text }]}>Shivanshu Dwivedi</Text>
-                        <Text style={[styles.userEmail, { color: theme.textSecondary }]}>sdwivedi@trincoll.edu</Text>
                     </LinearGradient>
 
                     {/* Appearance Section */}
@@ -135,19 +230,6 @@ function Profile() {
                             >
                                 <Ionicons name="cloud-download-outline" size={24} color={theme.primary} />
                                 <Text style={[styles.buttonText, { color: theme.text }]}>Restore Wallet</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                            style={[styles.button, { borderColor: theme.border }]}
-                            onPress={navigateToESign}
-                        >
-                            <LinearGradient
-                                colors={[theme.surface, theme.darker]}
-                                style={styles.buttonContent}
-                            >
-                                <Ionicons name="create-outline" size={24} color="#5E5CE6" />
-                                <Text style={[styles.buttonText, { color: theme.text }]}>E-Signature</Text>
                             </LinearGradient>
                         </TouchableOpacity>
                     </View>
@@ -258,8 +340,7 @@ function Profile() {
                                     • Secure credential storage{'\n'}
                                     • Biometric authentication{'\n'}
                                     • PIN protection{'\n'}
-                                    • Backup and restore capabilities{'\n'}
-                                    • E-signature functionality{'\n\n'}
+                                    • Backup and restore capabilities{'\n\n'}
                                     <Text style={[styles.versionText, { color: theme.textSecondary }]}>Version 1.0.0</Text>
                                 </Text>
                                 <TouchableOpacity 
@@ -268,6 +349,54 @@ function Profile() {
                                 >
                                     <Text style={[styles.modalButtonText, { color: theme.text }]}>Close</Text>
                                 </TouchableOpacity>
+                            </LinearGradient>
+                        </Animatable.View>
+                    </View>
+                </Modal>
+
+                {/* Edit Name Modal */}
+                <Modal
+                    animationType="slide"
+                    transparent={true}
+                    visible={showEditNameModal}
+                    onRequestClose={() => setShowEditNameModal(false)}
+                >
+                    <View style={styles.modalOverlay}>
+                        <Animatable.View 
+                            animation="slideInUp"
+                            duration={300}
+                            style={styles.modalContent}
+                        >
+                            <LinearGradient
+                                colors={[theme.surface, theme.darker]}
+                                style={styles.modalGradient}
+                            >
+                                <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Name</Text>
+                                <TextInput
+                                    style={[styles.nameInput, { 
+                                        color: theme.text,
+                                        backgroundColor: theme.darker,
+                                        borderColor: theme.border
+                                    }]}
+                                    value={newName}
+                                    onChangeText={setNewName}
+                                    placeholder="Enter your name"
+                                    placeholderTextColor={theme.textSecondary}
+                                />
+                                <View style={styles.modalButtonsRow}>
+                                    <TouchableOpacity 
+                                        style={[styles.modalButton, styles.cancelButton, { borderColor: theme.border }]}
+                                        onPress={() => setShowEditNameModal(false)}
+                                    >
+                                        <Text style={{ color: theme.textSecondary, fontFamily: 'Poppins-Medium' }}>Cancel</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.modalButton, { backgroundColor: theme.primary }]}
+                                        onPress={handleSaveName}
+                                    >
+                                        <Text style={[styles.modalButtonText, { color: theme.text }]}>Save</Text>
+                                    </TouchableOpacity>
+                                </View>
                             </LinearGradient>
                         </Animatable.View>
                     </View>
@@ -309,15 +438,37 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
+        position: 'relative',
+    },
+    profileImage: {
+        width: 116,
+        height: 116,
+        borderRadius: 58,
+    },
+    cameraIconContainer: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        borderRadius: 15,
+        width: 30,
+        height: 30,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    nameContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     userName: {
         fontFamily: 'Poppins-Bold',
         fontSize: 24,
         marginBottom: 5,
     },
-    userEmail: {
-        fontFamily: 'Poppins-Regular',
-        fontSize: 16,
+    editNameButton: {
+        marginLeft: 10,
+        marginBottom: 5,
     },
     section: {
         marginBottom: 25,
@@ -386,6 +537,7 @@ const styles = StyleSheet.create({
         padding: 15,
         borderRadius: 12,
         alignItems: 'center',
+        flex: 1,
     },
     modalButtonText: {
         fontFamily: 'Poppins-Bold',
@@ -420,6 +572,23 @@ const styles = StyleSheet.create({
         right: 0,
         bottom: 0,
         borderRadius: 13,
+        borderWidth: 1,
+    },
+    nameInput: {
+        fontFamily: 'Poppins-Regular',
+        fontSize: 16,
+        padding: 15,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 20,
+    },
+    modalButtonsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        gap: 10,
+    },
+    cancelButton: {
+        backgroundColor: 'transparent',
         borderWidth: 1,
     },
 });

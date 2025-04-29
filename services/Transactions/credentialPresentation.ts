@@ -124,6 +124,7 @@ async function trin_send_presentation(presentation_definition: Record<string, an
             },
             body: presentation_body
         })
+        console.log("RESPONSE", response);
 
         if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status}`);

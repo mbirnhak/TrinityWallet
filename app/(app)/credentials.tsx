@@ -246,13 +246,6 @@ export default function Credentials() {
         [{ text: 'OK' }]
       );
     } finally {
-      if (storage) {
-        try {
-          storage.close();
-        } catch (closeError) {
-          console.error("Error closing storage:", closeError);
-        }
-      }
       setLoading(false);
     }
   }, []);

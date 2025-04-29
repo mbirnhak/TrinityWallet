@@ -773,7 +773,7 @@ async function requestStudentCredential(username: string = 'mbirnhak') {
     const studentCredential = await credentialResponse.json();
     if (studentCredential.credential) {
       // Student ID Credential does not include cnf for binding credential to holder
-      const keyPair = { privateKey: { x: "", y: "" }, publicKey: { x: "", y: "" } }
+      const keyPair = { privateKey: undefined, publicKey: undefined }
       const success = await storage.storeCredential(studentCredential.credential, keyPair);
       if (success == true) {
         console.log("Successfully stored student credential");

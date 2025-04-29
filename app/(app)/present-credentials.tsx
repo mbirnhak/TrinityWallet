@@ -1,596 +1,560 @@
-import React, { useState, useEffect } from 'react';
-import { 
-    View, 
-    Text, 
-    StyleSheet, 
-    TouchableOpacity, 
-    ScrollView,
-    Alert,
-    Modal,
-    SafeAreaView,
-    StatusBar,
-    Platform,
-    Switch,
-    TextInput,
-    Image
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, ScrollView, StyleSheet, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
-import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
-import { Animated } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CredentialStorage } from '@/services/credentialStorage';
+import { getDbEncryptionKey } from '@/services/Utils/crypto';
+import LogService from '@/services/LogService';
 
-function Profile() {
-    const { signOut } = useAuth();
-    const { theme, isDarkMode, toggleTheme } = useTheme();
-    const [showHelpModal, setShowHelpModal] = useState(false);
-    const [showAboutModal, setShowAboutModal] = useState(false);
-    const [showEditNameModal, setShowEditNameModal] = useState(false);
-    const [userName, setUserName] = useState('Shivanshu Dwivedi');
-    const [newName, setNewName] = useState('');
-    const [profileImage, setProfileImage] = useState(null);
+interface Credential {
+  id: string | number;
+  type: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  timestamp: string;
+  expiration?: string | null;
+  vct?: string;
+}
 
-    // Load saved name and profile image when component mounts
-    useEffect(() => {
-        const loadProfileData = async () => {
-            try {
-                const savedName = await AsyncStorage.getItem('user_name');
-                if (savedName) {
-                    setUserName(savedName);
-                }
-                
-                const savedImage = await AsyncStorage.getItem('profile_image');
-                if (savedImage) {
-                    setProfileImage(savedImage);
-                }
-            } catch (error) {
-                console.error('Error loading profile data:', error);
-            }
-        };
+type IoniconsProps = React.ComponentProps<typeof Ionicons>;
+
+// Map for credential types and their display names
+const CREDENTIAL_TYPES: Record<string, { name: string, description: string, icon: string, color: string }> = {
+  'pid': {
+    name: 'Personal ID',
+    description: 'Present your personal identity information',
+    icon: 'person-outline',
+    color: '#0A84FF' // Blue
+  },
+  'msisdn': {
+    name: 'Mobile Number',
+    description: 'Present your mobile subscriber number',
+    icon: 'call-outline',
+    color: '#FF9500' // Orange
+  },
+  'ehic': {
+    name: 'Health Insurance Card',
+    description: 'Present your European health insurance information',
+    icon: 'medical-outline',
+    color: '#5E5CE6' // Purple
+  },
+  'age_over': {
+    name: 'Age Verification',
+    description: 'Verify that you are over 18 years old',
+    icon: 'calendar-outline',
+    color: '#FF2D55' // Pink
+  },
+  'iban': {
+    name: 'Bank Account',
+    description: 'Present your bank account information',
+    icon: 'card-outline',
+    color: '#30B0C7' // Light blue
+  },
+  'health_id': {
+    name: 'Health ID',
+    description: 'Present your health identification information',
+    icon: 'fitness-outline',
+    color: '#34C759' // Green
+  },
+  'tax': {
+    name: 'Tax ID',
+    description: 'Present your tax identification information',
+    icon: 'receipt-outline',
+    color: '#AF52DE' // Purple
+  },
+  'trinity_library': {
+    name: 'Trinity Library Card',
+    description: 'Access Trinity library services',
+    icon: 'library-outline',
+    color: '#5E5CE6' // Purple
+  },
+  'default': {
+    name: 'Credential',
+    description: 'Present your digital credential',
+    icon: 'document-outline',
+    color: '#0A84FF' // Default blue
+  }
+};
+
+export default function PresentCredentials() {
+  const { theme, isDarkMode } = useTheme();
+  const [selectedCredential, setSelectedCredential] = useState<string | number | null>(null);
+  const [availableCredentials, setAvailableCredentials] = useState<Credential[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const logService = LogService.getInstance();
+
+  // Function to determine credential type from claims
+  const determineCredentialType = (claims: any): string => {
+    // Check VCT field first
+    const vct = claims.vct || '';
+    
+    for (const type of Object.keys(CREDENTIAL_TYPES)) {
+      if (vct.includes(type)) {
+        return type;
+      }
+    }
+
+    // Check specific fields
+    if (claims.family_name || claims.given_name) return 'pid';
+    if (claims.msisdn || claims.phoneNumber) return 'msisdn';
+    if (claims.ehic_number || claims.healthInsurance) return 'ehic';
+    if (claims.over18 || claims.ageOver18) return 'age_over';
+    if (claims.iban || claims.bankAccount) return 'iban';
+    if (claims.health_id_number || claims.healthId) return 'health_id';
+    if (claims.tax_id || claims.taxNumber) return 'tax';
+    
+    // Try to determine from claim keys as fallback
+    const claimKeys = Object.keys(claims).join(' ').toLowerCase();
+    
+    if (claimKeys.includes('person') || claimKeys.includes('name')) return 'pid';
+    if (claimKeys.includes('phone') || claimKeys.includes('mobile')) return 'msisdn';
+    if (claimKeys.includes('health') || claimKeys.includes('insurance')) return 'ehic';
+    if (claimKeys.includes('age') || claimKeys.includes('adult')) return 'age_over';
+    if (claimKeys.includes('bank') || claimKeys.includes('account')) return 'iban';
+    if (claimKeys.includes('tax')) return 'tax';
+    if (claimKeys.includes('library') || claimKeys.includes('trinity')) return 'trinity_library';
+    
+    return 'default';
+  };
+
+  // Fetch available credentials from storage
+  useEffect(() => {
+    const fetchCredentials = async () => {
+      let storage = null;
+      
+      try {
+        setLoading(true);
         
-        loadProfileData();
-    }, []);
-
-    const handleSignOut = async () => {
-        try {
-            await signOut();
-            router.replace('../login');
-        } catch (error) {
-            Alert.alert(
-                'Error',
-                'Failed to sign out. Please try again.',
-                [{ text: 'OK' }]
-            );
+        // Get database encryption key
+        const dbEncryptionKey = await getDbEncryptionKey();
+        if (!dbEncryptionKey) {
+          throw new Error("Failed to retrieve database encryption key");
         }
-    };
-
-    const handleEditName = () => {
-        setNewName(userName);
-        setShowEditNameModal(true);
-    };
-
-    const handleSaveName = async () => {
-        if (newName.trim()) {
-            setUserName(newName.trim());
-            setShowEditNameModal(false);
+        
+        // Initialize credential storage
+        storage = new CredentialStorage(dbEncryptionKey);
+        
+        // Fetch actual credentials from database
+        const credentialsFromDb = await storage.retrieveCredentials();
+        
+        if (!credentialsFromDb || credentialsFromDb.length === 0) {
+          setAvailableCredentials([]);
+          setLoading(false);
+          return;
+        }
+        
+        // Transform credentials into displayable format
+        const displayableCredentials = credentialsFromDb.map(cred => {
+          // Parse claims if they're stored as a string
+          const claims = typeof cred.credential_claims === 'string' 
+            ? JSON.parse(cred.credential_claims) 
+            : cred.credential_claims;
             
-            // Save to AsyncStorage
-            try {
-                await AsyncStorage.setItem('user_name', newName.trim());
-            } catch (error) {
-                console.error('Error saving name:', error);
-            }
-        } else {
-            Alert.alert('Invalid Name', 'Please enter a valid name.');
-        }
-    };
-
-    const handlePickImage = async () => {
-        // Request permission to access photos
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        
-        if (status !== 'granted') {
-            Alert.alert('Permission Required', 'Please allow access to your photo library to change your profile picture.');
-            return;
-        }
-        
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.7,
+          // Determine credential type from claims
+          const credType = determineCredentialType(claims);
+          
+          // Get display information for the credential type
+          const typeInfo = CREDENTIAL_TYPES[credType] || CREDENTIAL_TYPES.default;
+          
+          // Get expiration date if available
+          const expiration = cred.exp_date 
+            ? new Date(Number(cred.exp_date) * 1000).toISOString() 
+            : null;
+            
+          // Create credential object
+          return {
+            id: cred.id,
+            type: credType,
+            name: typeInfo.name,
+            description: typeInfo.description,
+            icon: typeInfo.icon,
+            color: typeInfo.color,
+            timestamp: new Date(Number(cred.iss_date) * 1000).toISOString(),
+            expiration,
+            vct: claims.vct
+          };
         });
         
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            const selectedAsset = result.assets[0];
-            setProfileImage(selectedAsset.uri);
-            
-            // Save to AsyncStorage
-            try {
-                await AsyncStorage.setItem('profile_image', selectedAsset.uri);
-            } catch (error) {
-                console.error('Error saving profile image:', error);
-            }
-        }
+        setAvailableCredentials(displayableCredentials);
+        
+        // Log credential fetch attempt
+        await logService.createLog({
+          transaction_type: 'credential_presentation',
+          status: 'success',
+          details: `Retrieved ${displayableCredentials.length} available credentials for presentation`
+        });
+        
+      } catch (error) {
+        console.error('Error fetching credentials:', error);
+        
+        // Log the error
+        await logService.createLog({
+          transaction_type: 'credential_presentation',
+          status: 'failed',
+          details: `Error fetching available credentials: ${error instanceof Error ? error.message : String(error)}`
+        });
+        
+        Alert.alert(
+          'Error',
+          'Failed to fetch credential information. Please try again.',
+          [{ text: 'OK' }]
+        );
+      } finally {
+        setLoading(false);
+      }
     };
 
-    return (
-        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.dark }]}>
-            <StatusBar 
-                barStyle={isDarkMode ? "light-content" : "dark-content"} 
-                backgroundColor={theme.dark} 
-            />
-            <ScrollView 
-                style={[styles.container, { backgroundColor: theme.dark }]}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
-            >
-                <Animatable.View 
-                    animation="fadeIn" 
-                    duration={1000} 
-                    style={styles.content}
-                >
-                    <LinearGradient
-                        colors={[`${theme.primary}10`, 'transparent']}
-                        style={styles.profileHeader}
-                    >
-                        <TouchableOpacity 
-                            style={styles.avatarContainer}
-                            onPress={handlePickImage}
-                        >
-                            <LinearGradient
-                                colors={[theme.primary, theme.primaryDark]}
-                                style={[styles.avatarGradient, { borderColor: theme.border }]}
-                            >
-                                {profileImage ? (
-                                    <Image 
-                                        source={{ uri: profileImage }} 
-                                        style={styles.profileImage} 
-                                    />
-                                ) : (
-                                    <Ionicons name="person" size={60} color={theme.text} />
-                                )}
-                                <View style={styles.cameraIconContainer}>
-                                    <Ionicons name="camera" size={18} color={theme.text} />
-                                </View>
-                            </LinearGradient>
-                        </TouchableOpacity>
-                        <View style={styles.nameContainer}>
-                            <Text style={[styles.userName, { color: theme.text }]}>{userName}</Text>
-                            <TouchableOpacity 
-                                style={styles.editNameButton}
-                                onPress={handleEditName}
-                            >
-                                <Ionicons name="pencil" size={18} color={theme.primary} />
-                            </TouchableOpacity>
-                        </View>
-                    </LinearGradient>
+    fetchCredentials();
+  }, [theme]);
 
-                    {/* Appearance Section */}
-                    <View style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
-                        <TouchableOpacity 
-                            style={[styles.button, { borderColor: theme.border }]}
-                            activeOpacity={1}
-                        >
-                            <LinearGradient
-                                colors={[theme.surface, theme.darker]}
-                                style={styles.buttonContent}
-                            >
-                                <Ionicons 
-                                    name={isDarkMode ? "moon" : "sunny"} 
-                                    size={24} 
-                                    color={theme.primary} 
-                                />
-                                <Text style={[styles.buttonText, { 
-                                    color: theme.text,
-                                    marginLeft: 15,
-                                    textAlign: 'left'
-                                }]}>
-                                    {isDarkMode ? "Dark Mode" : "Light Mode"}
-                                </Text>
-                                <Switch
-                                    trackColor={{ false: "#3e3e3e", true: `${theme.primary}50` }}
-                                    thumbColor={isDarkMode ? theme.primary : "#f4f3f4"}
-                                    ios_backgroundColor="#3e3e3e"
-                                    onValueChange={toggleTheme}
-                                    value={isDarkMode}
-                                    style={styles.switch}
-                                />
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    </View>
+  const handleCredentialSelection = (credential: Credential) => {
+    setSelectedCredential(prev => prev === credential.id ? null : credential.id);
+  };
 
-                    <View style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: theme.text }]}>Wallet Management</Text>
-                        <TouchableOpacity 
-                            style={[styles.button, { borderColor: theme.border }]}
-                            onPress={() => Alert.alert('Coming Soon', 'Backup feature will be available in future updates.')}
-                        >
-                            <LinearGradient
-                                colors={[theme.surface, theme.darker]}
-                                style={styles.buttonContent}
-                            >
-                                <Ionicons name="cloud-upload-outline" size={24} color={theme.primary} />
-                                <Text style={[styles.buttonText, { color: theme.text }]}>Backup Wallet</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
+  // Show confirmation dialog
+  const handlePresentCredential = () => {
+    if (!selectedCredential) {
+      Alert.alert('No Selection', 'Please select a credential to present');
+      return;
+    }
+    
+    const credential = availableCredentials.find(c => c.id === selectedCredential);
+    if (!credential) {
+      Alert.alert('Error', 'Selected credential not found');
+      return;
+    }
 
-                        <TouchableOpacity 
-                            style={[styles.button, { borderColor: theme.border }]}
-                            onPress={() => Alert.alert('Coming Soon', 'Restore feature will be available in future updates.')}
-                        >
-                            <LinearGradient
-                                colors={[theme.surface, theme.darker]}
-                                style={styles.buttonContent}
-                            >
-                                <Ionicons name="cloud-download-outline" size={24} color={theme.primary} />
-                                <Text style={[styles.buttonText, { color: theme.text }]}>Restore Wallet</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: theme.text }]}>Support & Information</Text>
-                        <TouchableOpacity 
-                            style={[styles.button, { borderColor: theme.border }]}
-                            onPress={() => setShowHelpModal(true)}
-                        >
-                            <LinearGradient
-                                colors={[theme.surface, theme.darker]}
-                                style={styles.buttonContent}
-                            >
-                                <Ionicons name="help-circle-outline" size={24} color={theme.primary} />
-                                <Text style={[styles.buttonText, { color: theme.text }]}>Help & Support</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity 
-                            style={[styles.button, { borderColor: theme.border }]}
-                            onPress={() => setShowAboutModal(true)}
-                        >
-                            <LinearGradient
-                                colors={[theme.surface, theme.darker]}
-                                style={styles.buttonContent}
-                            >
-                                <Ionicons name="information-circle-outline" size={24} color={theme.primary} />
-                                <Text style={[styles.buttonText, { color: theme.text }]}>About</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    </View>
-
-                    <TouchableOpacity 
-                        style={[styles.button, styles.signOutButton]}
-                        onPress={handleSignOut}
-                    >
-                        <LinearGradient
-                            colors={['rgba(255, 69, 58, 0.1)', 'rgba(255, 69, 58, 0.2)']}
-                            style={styles.signOutGradient}
-                        >
-                            <Animated.View style={[styles.signOutContent, { backgroundColor: theme.dark }]}>
-                                <Ionicons name="log-out-outline" size={24} color={theme.error} />
-                                <Text style={[styles.buttonText, styles.signOutText, { color: theme.error }]}>Sign Out</Text>
-                                <View style={[styles.signOutBorder, { borderColor: 'rgba(255, 69, 58, 0.3)' }]} />
-                            </Animated.View>
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </Animatable.View>
-
-                {/* Help & Support Modal */}
-                <Modal
-                    animationType="slide"
-                    transparent={true}
-                    visible={showHelpModal}
-                    onRequestClose={() => setShowHelpModal(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <Animatable.View 
-                            animation="slideInUp"
-                            duration={300}
-                            style={styles.modalContent}
-                        >
-                            <LinearGradient
-                                colors={[theme.surface, theme.darker]}
-                                style={styles.modalGradient}
-                            >
-                                <Text style={[styles.modalTitle, { color: theme.text }]}>Help & Support</Text>
-                                <Text style={[styles.modalText, { color: theme.textSecondary }]}>
-                                    For support inquiries, please contact:{'\n\n'}
-                                    <Text style={[styles.modalHighlight, { color: theme.primary }]}>sdwivedi@trincoll.edu</Text>{'\n'}
-                                    <Text style={[styles.modalHighlight, { color: theme.primary }]}>+1 (860) 209 7055</Text>{'\n\n'}
-                                    Hours: Mon-Fri, 9 AM - 6 PM EST
-                                </Text>
-                                <TouchableOpacity 
-                                    style={[styles.modalButton, { backgroundColor: theme.primary }]}
-                                    onPress={() => setShowHelpModal(false)}
-                                >
-                                    <Text style={[styles.modalButtonText, { color: theme.text }]}>Close</Text>
-                                </TouchableOpacity>
-                            </LinearGradient>
-                        </Animatable.View>
-                    </View>
-                </Modal>
-
-                {/* About Modal */}
-                <Modal
-                    animationType="slide"
-                    transparent={true}
-                    visible={showAboutModal}
-                    onRequestClose={() => setShowAboutModal(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <Animatable.View 
-                            animation="slideInUp"
-                            duration={300}
-                            style={styles.modalContent}
-                        >
-                            <LinearGradient
-                                colors={[theme.surface, theme.darker]}
-                                style={styles.modalGradient}
-                            >
-                                <Text style={[styles.modalTitle, { color: theme.text }]}>About Trinity Wallet</Text>
-                                <Text style={[styles.modalText, { color: theme.textSecondary }]}>
-                                    Trinity Wallet is an eDIAS compliant digital wallet designed for secure 
-                                    and efficient management of your digital credentials.{'\n\n'}
-                                    Features:{'\n'}
-                                    • Secure credential storage{'\n'}
-                                    • Biometric authentication{'\n'}
-                                    • PIN protection{'\n'}
-                                    • Backup and restore capabilities{'\n\n'}
-                                    <Text style={[styles.versionText, { color: theme.textSecondary }]}>Version 1.0.0</Text>
-                                </Text>
-                                <TouchableOpacity 
-                                    style={[styles.modalButton, { backgroundColor: theme.primary }]}
-                                    onPress={() => setShowAboutModal(false)}
-                                >
-                                    <Text style={[styles.modalButtonText, { color: theme.text }]}>Close</Text>
-                                </TouchableOpacity>
-                            </LinearGradient>
-                        </Animatable.View>
-                    </View>
-                </Modal>
-
-                {/* Edit Name Modal */}
-                <Modal
-                    animationType="slide"
-                    transparent={true}
-                    visible={showEditNameModal}
-                    onRequestClose={() => setShowEditNameModal(false)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <Animatable.View 
-                            animation="slideInUp"
-                            duration={300}
-                            style={styles.modalContent}
-                        >
-                            <LinearGradient
-                                colors={[theme.surface, theme.darker]}
-                                style={styles.modalGradient}
-                            >
-                                <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Name</Text>
-                                <TextInput
-                                    style={[styles.nameInput, { 
-                                        color: theme.text,
-                                        backgroundColor: theme.darker,
-                                        borderColor: theme.border
-                                    }]}
-                                    value={newName}
-                                    onChangeText={setNewName}
-                                    placeholder="Enter your name"
-                                    placeholderTextColor={theme.textSecondary}
-                                />
-                                <View style={styles.modalButtonsRow}>
-                                    <TouchableOpacity 
-                                        style={[styles.modalButton, styles.cancelButton, { borderColor: theme.border }]}
-                                        onPress={() => setShowEditNameModal(false)}
-                                    >
-                                        <Text style={{ color: theme.textSecondary, fontFamily: 'Poppins-Medium' }}>Cancel</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity 
-                                        style={[styles.modalButton, { backgroundColor: theme.primary }]}
-                                        onPress={handleSaveName}
-                                    >
-                                        <Text style={[styles.modalButtonText, { color: theme.text }]}>Save</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </LinearGradient>
-                        </Animatable.View>
-                    </View>
-                </Modal>
-            </ScrollView>
-        </SafeAreaView>
+    Alert.alert(
+      'Confirm Presentation',
+      `Are you sure you want to present the following credential?\n\n• ${credential.name}`,
+      [
+        { text: 'No', style: 'cancel' },
+        { text: 'Confirm', onPress: () => doPresentCredential(credential) }
+      ]
     );
+  };
+
+  // Actual presentation logic
+  const doPresentCredential = async (credential: Credential) => {
+    try {
+      await logService.initialize();
+      await logService.createLog({
+        transaction_type: 'credential_presentation',
+        status: 'success',
+        details: `Presented ${credential.name} credential`,
+        relying_party: 'Test Verifier'
+      });
+
+      Alert.alert(
+        'Credential Presented',
+        `You have successfully presented your ${credential.name} credential.`,
+        [{
+          text: 'OK',
+          onPress: () => {
+            // Just clear the selection after successful presentation
+            setSelectedCredential(null);
+          }
+        }]
+      );
+    } catch (error) {
+      console.error('Error during credential presentation:', error);
+      await logService.createLog({
+        transaction_type: 'credential_presentation',
+        status: 'failed',
+        details: `Failed to present ${credential.name} credential: ${error instanceof Error ? error.message : String(error)}`,
+        relying_party: 'Test Verifier'
+      });
+      Alert.alert('Error', 'Failed to present credential. Please try again.');
+    } finally {
+      logService.close();
+    }
+  };
+
+  const formatDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return `Issued: ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  };
+
+  const CredentialCard = ({ credential }: { credential: Credential }) => {
+    const isSelected = credential.id === selectedCredential;
+    return (
+      <TouchableOpacity
+        style={[
+          styles.credentialCard,
+          { borderColor: theme.border },
+          isSelected && [styles.selectedCard, { borderColor: theme.primary }]
+        ]}
+        onPress={() => handleCredentialSelection(credential)}
+        activeOpacity={0.8}
+      >
+        <LinearGradient
+          colors={[theme.surface, theme.darker]}
+          style={styles.cardGradient}
+        >
+          <View style={styles.cardContent}>
+            <View
+              style={[
+                styles.iconContainer,
+                { backgroundColor: credential.color + '20' }
+              ]}
+            >
+              <Ionicons
+                name={credential.icon as IoniconsProps['name']}
+                size={24}
+                color={credential.color}
+              />
+            </View>
+
+            <View style={styles.cardTextContainer}>
+              <Text
+                style={[
+                  styles.credentialName,
+                  { color: theme.text }
+                ]}
+              >
+                {credential.name}
+              </Text>
+              <Text style={[styles.credentialDescription, { color: theme.textSecondary }]}>
+                {credential.description}
+              </Text>
+              <Text style={[styles.issueDate, { color: theme.textSecondary }]}>
+                {formatDate(credential.timestamp)}
+              </Text>
+            </View>
+
+            <View style={styles.radioContainer}>
+              <View
+                style={[
+                  styles.radioOuter,
+                  { borderColor: theme.border },
+                  isSelected && { borderColor: theme.primary }
+                ]}
+              >
+                {isSelected && <View style={[styles.radioInner, { backgroundColor: theme.primary }]} />}
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.dark }]}>
+      <View style={[styles.header, { backgroundColor: theme.dark, borderBottomColor: theme.border }]}>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Present Credentials</Text>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animatable.View animation="fadeIn" duration={800} style={styles.contentContainer}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Select a Credential</Text>
+          <Text style={[styles.instructionText, { color: theme.textSecondary }]}>
+            Choose the credential you would like to present. Only one credential can be presented at a time.
+          </Text>
+
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={theme.primary} />
+              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Loading credentials...</Text>
+            </View>
+          ) : availableCredentials.length > 0 ? (
+            <View style={styles.credentialsContainer}>
+              {availableCredentials.map(cred => (
+                <CredentialCard key={cred.id.toString()} credential={cred} />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyStateContainer}>
+              <Ionicons name="document-text-outline" size={48} color={theme.textSecondary} />
+              <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>
+                No credentials available
+              </Text>
+              <Text style={[styles.emptyStateSubtext, { color: theme.textSecondary }]}>
+                Go to the Request tab to obtain credentials
+              </Text>
+            </View>
+          )}
+        </Animatable.View>
+      </ScrollView>
+
+      {availableCredentials.length > 0 && (
+        <View style={[styles.bottomContainer, { borderTopColor: theme.border, backgroundColor: theme.dark }]}>
+          <TouchableOpacity
+            style={[styles.presentButton, !selectedCredential && styles.disabledButton]}
+            onPress={handlePresentCredential}
+            disabled={!selectedCredential}
+          >
+            <LinearGradient
+              colors={[
+                selectedCredential ? theme.primary : theme.textSecondary,
+                selectedCredential ? theme.primaryDark : theme.border
+              ]}
+              style={styles.buttonGradient}
+            >
+              <Text style={[styles.buttonText, { color: theme.text }]}>Present Credential</Text>
+              <Ionicons name="arrow-forward" size={20} color={theme.text} />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-    },
-    container: {
-        flex: 1,
-    },
-    scrollContent: {
-        flexGrow: 1,
-        paddingBottom: 20,
-    },
-    content: {
-        padding: 20,
-        paddingTop: Platform.OS === 'ios' ? 10 : 20,
-    },
-    profileHeader: {
-        alignItems: 'center',
-        marginBottom: 30,
-        padding: 20,
-        borderRadius: 20,
-    },
-    avatarContainer: {
-        marginBottom: 15,
-        alignItems: 'center',
-    },
-    avatarGradient: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        position: 'relative',
-    },
-    profileImage: {
-        width: 116,
-        height: 116,
-        borderRadius: 58,
-    },
-    cameraIconContainer: {
-        position: 'absolute',
-        bottom: 0,
-        right: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        borderRadius: 15,
-        width: 30,
-        height: 30,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    nameContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    userName: {
-        fontFamily: 'Poppins-Bold',
-        fontSize: 24,
-        marginBottom: 5,
-    },
-    editNameButton: {
-        marginLeft: 10,
-        marginBottom: 5,
-    },
-    section: {
-        marginBottom: 25,
-    },
-    sectionTitle: {
-        fontFamily: 'Poppins-Bold',
-        fontSize: 18,
-        marginBottom: 15,
-        marginLeft: 5,
-        textAlign: 'center',
-    },
-    button: {
-        marginBottom: 10,
-        borderRadius: 15,
-        overflow: 'hidden',
-        borderWidth: 1,
-    },
-    buttonContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 15,
-    },
-    buttonText: {
-        fontFamily: 'Poppins-Bold',
-        flex: 1,
-        fontSize: 16,
-        marginLeft: -24,
-        textAlign: 'center',
-    },
-    switch: {
-        marginLeft: 10,
-    },
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        justifyContent: 'center',
-        padding: 20,
-    },
-    modalContent: {
-        borderRadius: 20,
-        overflow: 'hidden',
-    },
-    modalGradient: {
-        padding: 20,
-    },
-    modalTitle: {
-        fontFamily: 'Poppins-Bold',
-        fontSize: 24,
-        marginBottom: 20,
-        textAlign: 'center',
-    },
-    modalText: {
-        fontFamily: 'Poppins-Regular',
-        fontSize: 16,
-        marginBottom: 20,
-        lineHeight: 24,
-        textAlign: 'center',
-    },
-    modalHighlight: {
-        fontFamily: 'Poppins-Medium',
-    },
-    versionText: {
-        fontStyle: 'italic',
-    },
-    modalButton: {
-        padding: 15,
-        borderRadius: 12,
-        alignItems: 'center',
-        flex: 1,
-    },
-    modalButtonText: {
-        fontFamily: 'Poppins-Bold',
-        fontSize: 16,
-    },
-    signOutButton: {
-        marginTop: 30,
-        marginBottom: 40,
-        borderWidth: 0,
-    },
-    signOutGradient: {
-        borderRadius: 15,
-        padding: 2,
-    },
-    signOutContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 15,
-        borderRadius: 13,
-    },
-    signOutText: {
-        fontSize: 18,
-        textAlign: 'center',
-        flex: 1,
-        marginLeft: -24,
-    },
-    signOutBorder: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        borderRadius: 13,
-        borderWidth: 1,
-    },
-    nameInput: {
-        fontFamily: 'Poppins-Regular',
-        fontSize: 16,
-        padding: 15,
-        borderRadius: 12,
-        borderWidth: 1,
-        marginBottom: 20,
-    },
-    modalButtonsRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        gap: 10,
-    },
-    cancelButton: {
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-    },
+  container: { 
+    flex: 1 
+  },
+  header: {
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    paddingHorizontal: 16, 
+    paddingTop: 60, 
+    paddingBottom: 16, 
+    borderBottomWidth: 1
+  },
+  headerTitle: { 
+    fontFamily: 'Poppins-Bold', 
+    fontSize: 18 
+  },
+  scrollView: { 
+    flex: 1 
+  },
+  scrollContent: { 
+    paddingBottom: 30 
+  },
+  contentContainer: { 
+    padding: 20 
+  },
+  sectionTitle: { 
+    fontFamily: 'Poppins-Bold', 
+    fontSize: 20, 
+    marginBottom: 8 
+  },
+  instructionText: { 
+    fontFamily: 'Poppins-Regular', 
+    fontSize: 14, 
+    marginBottom: 24 
+  },
+  loadingContainer: { 
+    alignItems: 'center', 
+    paddingVertical: 30 
+  },
+  loadingText: { 
+    fontFamily: 'Poppins-Regular', 
+    fontSize: 16,
+    marginTop: 12
+  },
+  credentialsContainer: { 
+    gap: 16 
+  },
+  credentialCard: { 
+    borderRadius: 16, 
+    overflow: 'hidden', 
+    borderWidth: 1 
+  },
+  selectedCard: { 
+    borderWidth: 2 
+  },
+  cardGradient: { 
+    borderRadius: 15 
+  },
+  cardContent: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 16 
+  },
+  iconContainer: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 24, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: 16 
+  },
+  cardTextContainer: { 
+    flex: 1 
+  },
+  credentialName: { 
+    fontFamily: 'Poppins-Bold', 
+    fontSize: 16 
+  },
+  credentialDescription: { 
+    fontFamily: 'Poppins-Regular', 
+    fontSize: 13, 
+    marginTop: 2 
+  },
+  issueDate: { 
+    fontFamily: 'Poppins-Regular', 
+    fontSize: 12, 
+    marginTop: 4, 
+    fontStyle: 'italic' 
+  },
+  radioContainer: { 
+    padding: 4 
+  },
+  radioOuter: { 
+    width: 22, 
+    height: 22, 
+    borderRadius: 11, 
+    borderWidth: 2, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  radioInner: { 
+    width: 12, 
+    height: 12, 
+    borderRadius: 6 
+  },
+  bottomContainer: { 
+    padding: 20, 
+    borderTopWidth: 1 
+  },
+  presentButton: { 
+    borderRadius: 16, 
+    overflow: 'hidden' 
+  },
+  disabledButton: { 
+    opacity: 0.7 
+  },
+  buttonGradient: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    paddingVertical: 14, 
+    paddingHorizontal: 20, 
+    borderRadius: 16, 
+    gap: 8 
+  },
+  buttonText: { 
+    fontFamily: 'Poppins-Bold', 
+    fontSize: 16 
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40
+  },
+  emptyStateText: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 18,
+    marginTop: 16
+  },
+  emptyStateSubtext: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center'
+  }
 });
-
-export default Profile;
