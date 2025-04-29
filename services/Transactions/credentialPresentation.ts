@@ -308,6 +308,39 @@ async function send_presentation(decoded_jwt: Record<string, unknown>) {
         body: presentation_body
     })
     console.log("Response: ", response);
+
+    try {
+        // Check if response is JSON and parse it
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json") && response.ok) {
+            const data = await response.json();
+            console.log("Data:", data);
+
+            // Check for redirect_uri
+            if (data.redirect_uri) {
+                console.log("Redirect URI:", data.redirect_uri);
+                Linking.openURL(data.redirect_uri);
+                return true;
+            } else {
+                console.log("No redirect_uri found in response JSON.");
+                return true;
+            }
+        } else {
+            console.log("Response is not JSON. Content-Type:", contentType);
+            if (!response.ok) {
+                const errorMsg = `Failed to create presentation: ${response.status}`;
+                await logService.createLog({
+                    transaction_type: 'credential_presentation',
+                    status: 'failed',
+                    details: errorMsg
+                });
+                return false;
+            }
+        }
+    } catch (error) {
+        console.error("Error parsing JSON from response:", error);
+        return false;
+    }
 }
 
 async function decode_jwt(encoded_jwt: string) {
@@ -468,6 +501,7 @@ async function generatePresentation(credential_id: number, claims: string | stri
             return "";
         } else {
             const credential_string = credential[0].credential_string;
+            console.log("Credential string: ", credential_string);
             const public_key = credential[0].public_key;
             const private_key = credential[0].private_key;
 
@@ -475,16 +509,19 @@ async function generatePresentation(credential_id: number, claims: string | stri
             const sdJwt = await createSdJwt(private_key, public_key, true);
             let disclosureFrame;
             if (typeof claims === "string") {
+                const sanitizedClaim = claims.replace(/^\$\./, ""); // remove "$." prefix
                 disclosureFrame = {
-                    [claims]: true
+                    [sanitizedClaim]: true
                 }
             } else {
                 disclosureFrame = claims.reduce((acc: Record<string, boolean>, claim: string) => {
-                    acc[claim] = true;
+                    const sanitizedClaim = claim.replace(/^\$\./, ""); // remove "$." prefix
+                    acc[sanitizedClaim] = true;
                     return acc;
                 }, {} as Record<string, boolean>);
             }
 
+            console.log("Disclosure frame: ", disclosureFrame);
             const sd_jwt_kb_presentation = await sdJwt.presentCredential(credential_string, disclosureFrame, {
                 kb: {
                     payload: kb_payload,

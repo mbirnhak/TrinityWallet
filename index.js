@@ -40,12 +40,6 @@ function setupCrypto() {
                 const publicKeyHexX = convertToHexString(exportedPublicKey, 'x');
                 const publicKeyHexY = convertToHexString(exportedPublicKey, 'y');
                 const publicKeyHex = "04" + publicKeyHexX + publicKeyHexY;
-                console.log("My priv: ", privateKeyHex);
-                console.log("My priv X: ", exportedPrivatKey.x);
-                console.log("My priv Y: ", exportedPrivatKey.y);
-                console.log("Their x: ", publicKeyHexX);
-                console.log("Their y: ", publicKeyHexY);
-                console.log('Public Key from JWK: ', publicKeyHex)
                 const sharedSecret = p256.getSharedSecret(privateKeyHex, publicKeyHex, false);
                 const xCoordinateOnly = new Uint8Array(sharedSecret.subarray(1, 1 + 32));
                 // Convert uint8Array to ArrayBuffer
@@ -53,9 +47,6 @@ function setupCrypto() {
                     xCoordinateOnly.byteOffset,
                     xCoordinateOnly.byteOffset + xCoordinateOnly.byteLength
                 );
-                console.log("sharedSecretBuffer length: ", sharedSecretBuffer.byteLength)
-                console.log("sharedSecret: ", sharedSecret)
-                console.log("xCoordinateOnly: ", xCoordinateOnly)
                 return sharedSecretBuffer;
             } catch (error) {
                 console.error('SETUP: Error in deriveBits', error);
