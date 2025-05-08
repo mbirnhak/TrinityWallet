@@ -1,17 +1,14 @@
 import React, { useState } from 'react';
-import { StyleSheet, TouchableOpacity, Alert, Dimensions } from 'react-native';
+import { StyleSheet, TouchableOpacity, Alert, Text, View, Platform, StatusBar } from 'react-native';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { bcryptHash } from '@/services/Utils/crypto';
 import { storedValueKeys } from '@/services/Utils/enums';
 import { useAuth } from '@/context/AuthContext';
 import * as Animatable from 'react-native-animatable';
-import { Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const { width } = Dimensions.get('window');
-const BUTTON_SIZE = width * 0.2;
-
+// Using the same theme structure as login page
 const theme = {
     dark: '#000000',
     darker: '#1C1C1E',
@@ -38,13 +35,18 @@ export default function PinSetup() {
         pin: '',
         confirmPin: ''
     });
+    const [isTransitioning, setIsTransitioning] = useState(false);
 
     const handlePinInput = async (number: string) => {
         const currentPin = state.step === 'initial' ? state.pin : state.confirmPin;
         if (currentPin.length < 6) {
             const newPin = currentPin + number;
             if (state.step === 'initial' && newPin.length === 6) {
-                setState({ ...state, step: 'confirm', pin: newPin });
+                setIsTransitioning(true);
+                setTimeout(() => {
+                    setState({ ...state, step: 'confirm', pin: newPin });
+                    setIsTransitioning(false);
+                }, 300);
             } else if (state.step === 'confirm' && newPin.length === 6) {
                 await validateAndSavePin(state.pin, newPin);
             } else {
@@ -90,70 +92,90 @@ export default function PinSetup() {
     };
 
     return (
-        <LinearGradient
-            colors={[theme.dark, theme.background]}
-            style={styles.container}
-        >
-            <Animatable.View animation="fadeIn" duration={800} style={styles.content}>
-                <View style={styles.header}>
-                    <Animatable.Text animation="fadeInDown" delay={200} style={styles.title}>
-                        Create PIN
-                    </Animatable.Text>
-                    <Animatable.Text animation="fadeInDown" delay={400} style={styles.subtitle}>
-                        {state.step === 'initial' ? 'Enter a 6-digit PIN' : 'Confirm your PIN'}
-                    </Animatable.Text>
-                </View>
-
-                <Animatable.View animation="fadeIn" delay={600} style={styles.pinContainer}>
-                    <View style={styles.pinDisplay}>
-                        {[...Array(6)].map((_, i) => (
-                            <Animatable.View
-                                key={i}
-                                animation={
-                                    (state.step === 'initial' && i < state.pin.length) ||
-                                    (state.step === 'confirm' && i < state.confirmPin.length)
-                                        ? 'bounceIn'
-                                        : undefined
-                                }
-                                duration={200}
-                                style={[
-                                    styles.pinDot,
-                                    ((state.step === 'initial' && i < state.pin.length) ||
-                                    (state.step === 'confirm' && i < state.confirmPin.length)) &&
-                                    styles.pinDotFilled,
-                                ]}
-                            />
-                        ))}
-                    </View>
+        <>
+            <StatusBar barStyle="light-content" backgroundColor={theme.dark} />
+            <LinearGradient
+                colors={[theme.dark, theme.background]}
+                style={styles.container}
+            >
+                {/* Header with divider - matching login page */}
+                <Animatable.View
+                    animation="fadeInDown"
+                    duration={800}
+                    style={styles.headerContainer}
+                >
+                    <Text style={styles.headerText}>Create PIN</Text>
+                    <View style={styles.divider} />
                 </Animatable.View>
 
-                <Animatable.View animation="fadeInUp" delay={800} style={styles.keypad}>
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map((key, index) => (
-                        <TouchableOpacity
-                            key={index}
-                            style={[
-                                styles.keypadButton,
-                                key === '' && styles.keypadButtonDisabled,
-                                typeof key === 'number' && styles.numberButton
-                            ]}
-                            onPress={() => key === '⌫' ? handleDelete() : key !== '' && handlePinInput(key.toString())}
-                            disabled={key === ''}
+                <View style={styles.content}>
+                    {/* Pin container styled like login page */}
+                    <View style={styles.pinContainer}>
+                        <Animatable.Text 
+                            animation="fadeInDown" 
+                            delay={400} 
+                            style={styles.subtitle}
                         >
-                            <Text style={[
-                                styles.keypadButtonText,
-                                key === '⌫' && styles.deleteButtonText
-                            ]}>
-                                {key}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </Animatable.View>
+                            {state.step === 'initial' ? 'Enter a 6-digit PIN' : 'Confirm your PIN'}
+                        </Animatable.Text>
 
-                <Animatable.Text animation="fadeIn" delay={1000} style={styles.securityNote}>
-                    Never share your PIN with anyone
-                </Animatable.Text>
-            </Animatable.View>
-        </LinearGradient>
+                        <View style={styles.pinDisplay}>
+                            {[...Array(6)].map((_, i) => (
+                                <View
+                                    key={i}
+                                    style={[
+                                        styles.pinDot,
+                                        { borderColor: theme.primary },
+                                        ((state.step === 'initial' && i < state.pin.length) ||
+                                        (state.step === 'confirm' && i < state.confirmPin.length)) && 
+                                        { backgroundColor: theme.primary }
+                                    ]}
+                                />
+                            ))}
+                        </View>
+
+                        <View style={styles.keypad}>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map((key, index) => (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={[
+                                        styles.keypadButton,
+                                        key === '' && styles.keypadButtonDisabled,
+                                        typeof key === 'number' && {
+                                            backgroundColor: theme.surface,
+                                            borderColor: theme.border
+                                        }
+                                    ]}
+                                    onPress={() => {
+                                        if (key === '⌫') {
+                                            handleDelete();
+                                        } else if (key !== '') {
+                                            handlePinInput(key.toString());
+                                        }
+                                    }}
+                                    disabled={key === '' || isTransitioning}
+                                >
+                                    <Text style={[
+                                        styles.keypadButtonText,
+                                        { color: theme.text },
+                                        key === '⌫' && { color: theme.primary }
+                                    ]}>
+                                        {key}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    {/* Security note at bottom */}
+                    <View style={styles.buttonContainer}>
+                        <Animatable.Text animation="fadeIn" delay={1000} style={styles.securityNote}>
+                            Never share your PIN with anyone
+                        </Animatable.Text>
+                    </View>
+                </View>
+            </LinearGradient>
+        </>
     );
 }
 
@@ -161,90 +183,104 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
+    // Header with divider - matching login page
+    headerContainer: {
+        width: '100%',
+        paddingTop: Platform.OS === 'ios' ? 60 : 40,
+        paddingBottom: 15,
+        alignItems: 'center',
+    },
+    headerText: {
+        fontFamily: 'Poppins-Bold',
+        fontSize: 32,
+        marginBottom: 12,
+        color: theme.text,
+    },
+    divider: {
+        height: 1,
+        width: '85%',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)'
+    },
     content: {
         flex: 1,
-        padding: 20,
-    },
-    header: {
+        justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: 60,
-    },
-    title: {
-        fontFamily: 'Poppins-Bold',
-        fontSize: 28,
-        color: theme.text,
-        marginBottom: 10,
+        padding: 20,
+        paddingBottom: 30,
     },
     subtitle: {
         fontFamily: 'Poppins-Regular',
-        fontSize: 16,
+        fontSize: 18,
         color: theme.textSecondary,
         marginBottom: 40,
+        textAlign: 'center',
     },
+    // Pin container styled like login page
     pinContainer: {
+        flex: 1,
+        width: '100%',
         alignItems: 'center',
-        marginBottom: 50,
+        justifyContent: 'space-between',
+        paddingTop: 40,
+        paddingBottom: 10,
     },
     pinDisplay: {
         flexDirection: 'row',
-        justifyContent: 'center',
-        marginBottom: 20,
+        marginBottom: 60,
     },
     pinDot: {
-        width: 16,
-        height: 16,
-        borderRadius: 8,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
         borderWidth: 1,
-        borderColor: theme.primary,
-        marginHorizontal: 8,
+        marginHorizontal: 10,
         backgroundColor: 'transparent',
     },
-    pinDotFilled: {
-        backgroundColor: theme.primary,
-    },
+    // Updated keypad styles to match login page
     keypad: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'center',
+        width: '95%',
+        maxWidth: 360,
+        marginBottom: 15,
+        marginTop: 30,
     },
     keypadButton: {
-        width: BUTTON_SIZE,
-        height: BUTTON_SIZE,
+        width: '31%',
+        aspectRatio: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        margin: 10,
-        borderRadius: BUTTON_SIZE / 2,
-    },
-    numberButton: {
-        backgroundColor: theme.surface,
+        margin: '1%',
+        marginVertical: '4%',
+        borderRadius: 45,
         borderWidth: 1,
-        borderColor: theme.border,
-        shadowColor: theme.primary,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.2,
-        shadowRadius: 1.5,
-        elevation: 2,
     },
     keypadButtonDisabled: {
         backgroundColor: 'transparent',
+        borderWidth: 0,
     },
     keypadButtonText: {
+        fontSize: 30,
         fontFamily: 'Poppins-Regular',
-        fontSize: 24,
-        color: theme.text,
     },
     deleteButtonText: {
-        fontSize: 24,
-        color: theme.primary,
+        fontFamily: 'Poppins-Bold',
+        fontSize: 32,
+    },
+    // Button container for bottom area
+    buttonContainer: {
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 80,
+        marginTop: 5,
+        marginBottom: 20,
     },
     securityNote: {
         fontFamily: 'Poppins-Regular',
         textAlign: 'center',
         color: theme.textSecondary,
         fontSize: 14,
-        position: 'absolute',
-        bottom: 40,
-        left: 0,
-        right: 0,
     },
 });

@@ -36,6 +36,11 @@ type credentialMatches = {
     requested_claims: string[];
 }
 
+interface SelectedCredential {
+    credential_ID: number;
+    attributes: string[];
+}
+
 export async function retrieve_authorization_request(request_uri: string, client_id: string) {
     console.log('[Auth Request] Retrieving authorization request');
     try {
@@ -343,6 +348,16 @@ async function send_presentation(decoded_jwt: Record<string, unknown>) {
     }
 }
 
+export async function presentationQrCode(credentials: SelectedCredential[]) {
+    let vp_token: string[] = [];
+    const client_id = "None";
+    const nonce = "None";
+    for (const credential of credentials) {
+        vp_token.push(await generateVpToken(credential.credential_ID, credential.attributes, client_id, nonce));
+    }
+    console.log("VP Token: ", vp_token);
+    return vp_token;
+}
 async function decode_jwt(encoded_jwt: string) {
     // Split the JWT parts
     const parts = encoded_jwt.split('.');

@@ -13,7 +13,7 @@ import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler'
 
 // Map of credential types with their VCT identifiers
 const CREDENTIAL_TYPES = [
-  'pid', 'msisdn', 'ehic', 'age_over', 'iban','health_id', 'tax', 'pda1', 'por'
+  'pid', 'msisdn', 'ehic', 'age_over', 'iban','health_id', 'tax', 'pda1', 'por', 'student_id'
 ];
 
 // Human-readable names for credential types
@@ -26,7 +26,9 @@ const CREDENTIAL_NAMES = {
   'health_id': 'Health ID',
   'tax': 'Tax ID',
   'pda1': 'Driving License',
-  'por': 'Place of Residence'
+  'por': 'Place of Residence',
+  'student_id': 'Student ID',
+  'default': 'Generic Credential'
 };
 
 export default function Credentials() {
@@ -152,6 +154,11 @@ export default function Credentials() {
               credType = shortType;
               break;
             }
+
+            if(vct && vct.includes('trin.coll.student_id')) {
+              credType = 'student_id';
+              break;
+            }
           }
           
           // If still not found, try more specific claims that might indicate credential type
@@ -163,6 +170,7 @@ export default function Credentials() {
             else if (claims.iban || claims.bankAccount) credType = 'iban';
             else if (claims.health_id_number || claims.healthId) credType = 'health_id';
             else if (claims.tax_id || claims.taxNumber) credType = 'tax';
+            else if (claims.student_id || claims.studentNumber) credType = 'student_id';
           }
           
           // Use a fallback if no specific type was detected but we have a credential
@@ -184,9 +192,13 @@ export default function Credentials() {
               credType = 'iban';
             } else if (claimKeys.includes('tax')) {
               credType = 'tax';
-            } else {
+            }
+            else if (claimKeys.includes('student') || claimKeys.includes('school')) {
+              credType = 'student_id';
+            }            
+            else {
               // Last resort fallback - use generic credential type
-              credType = 'pid'; // Default to personal ID if nothing else matches
+              credType = 'default'; // Default to personal ID if nothing else matches
             }
           }
           
@@ -491,7 +503,9 @@ const viewCredentialDetails = (type: string, credentialId: string | number) => {
       'ehic_number': 'Health Insurance Number',
       'health_id_number': 'Health ID',
       'pda1_number': 'Driver\'s License',
-      'por_address': 'Address'
+      'por_address': 'Address',
+      'student_id': 'Student ID',
+      'studentID' : 'Student ID'
     };
     
     // Use special format if available
@@ -589,6 +603,8 @@ const viewCredentialDetails = (type: string, credentialId: string | number) => {
     exp?: number;
     iat?: number;
     jti?: string;
+    student_id?: string;
+    studentID?: string;  
   }
 
   const organizeClaimsForDisplay = (claims: Claims | null): ClaimItem[] => {

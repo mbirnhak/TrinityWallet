@@ -27,9 +27,6 @@
       },
       "supportsTablet": true,
       "bundleIdentifier": "edu.trincoll.trinitywallet",
-      "associatedDomains": [
-        "applinks:issuer.eudiw.dev"
-      ]
     },
     "android": {
       "adaptiveIcon": {
