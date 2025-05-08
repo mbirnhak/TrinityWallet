@@ -588,7 +588,6 @@ export default function PresentCredentials() {
         </View>
       </Modal>
 
-      // QR Code Modal
       <Modal
         animationType="fade"
         transparent
@@ -616,7 +615,7 @@ export default function PresentCredentials() {
                     size={250}
                     backgroundColor="white"
                     color="black"
-                    ecl="Q" // Higher error correction level
+                    ecl="Q"
                     quietZone={10}
                     onError={(error) => {
                       console.error('QR Code error:', error);
