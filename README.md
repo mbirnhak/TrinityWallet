@@ -92,7 +92,7 @@ Trinity Wallet is an eIDAS 2.0 compliant digital identity wallet designed for Tr
 
 ## 📱 **Demo & Assets**
 
-<video controls src="TrinityWalletDemo.mp4" title="Title"></video>
+[Demo]("https://github.com/user-attachments/assets/6d37b414-5446-419d-a7ec-f0ab9e1a5185")
 
 ---
 
