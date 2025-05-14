@@ -92,11 +92,17 @@ Trinity Wallet is an eIDAS 2.0 compliant digital identity wallet designed for Tr
 
 ## 📱 **Demo & Assets**
 
-<a href="./TrinityWalletDemo.mp4">
-  <img src="./TrinityWalletLogo.png" alt="Trinity Wallet Demo" width="200" />
-</a>
+<video width="600" controls>
+  <source src="TrinityWalletDemo.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
 
-Click the image to watch the demo video.
+Click to watch the demo video.
+
+---
+
+<img src="TrinityWalletLogo.png" alt="Trinity Wallet Logo" width="100" style="margin-top: 10px;">
+
 * **App Logo**: `TrinityWalletLogo.png`
 * **Demo Video**: `TrinityWalletDemo.mp4`
 
