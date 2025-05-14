@@ -52,3 +52,7 @@ node_modules
 
 package-lock.json
 yarn.lock
+.vscode/
+*.env
+*.local
+*.log
